@@ -1,0 +1,62 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1787001569564,
+      "tag": "0000_funny_winter_soldier",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1787017529251,
+      "tag": "0001_chemical_thena",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1787056801175,
+      "tag": "0002_even_maria_hill",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1787067710005,
+      "tag": "0003_breezy_dark_beast",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1787073359921,
+      "tag": "0004_equal_unicorn",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1787073442318,
+      "tag": "0005_workable_hitman",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1787083024548,
+      "tag": "0006_organic_william_stryker",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1787083065397,
+      "tag": "0007_old_joseph",
+      "breakpoints": true
+    }
+  ]
+}

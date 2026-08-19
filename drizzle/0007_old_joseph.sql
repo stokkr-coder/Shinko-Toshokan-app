@@ -1,0 +1,1 @@
+ALTER TABLE `github_backup_settings` MODIFY COLUMN `lastError` varchar(2000) NOT NULL DEFAULT '';

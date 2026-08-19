@@ -1,0 +1,79 @@
+# Atualização de catalogação e navegação
+
+- [x] Definir regras automáticas para Perry Rhodan, Patrística e autores recorrentes.
+- [x] Implementar identificação de coleção, série e numeração de fascículo/volume.
+- [x] Criar filtros combináveis por gênero, autor e status de revisão.
+- [x] Criar interface de busca avançada com filtros ativos e limpeza rápida.
+- [x] Validar regras e filtros contra a planilha original de 1.792 registros.
+- [x] Identificar e implementar regras para novas coleções recorrentes do acervo.
+- [x] Adicionar filtros por mídia e extensão de arquivo.
+- [x] Criar seleção e aprovação em lote para registros pendentes.
+- [x] Validar os novos fluxos com a planilha original.
+- [x] Definir o modelo de regras editáveis, exemplares e cópias de segurança.
+- [x] Preparar persistência autenticada para sincronizar o acervo entre dispositivos.
+- [x] Criar uma tela visual para criar, editar e desativar regras de coleção.
+- [x] Permitir vincular cada registro a exemplar físico, link ou arquivo digital.
+- [x] Implementar backup, restauração e indicadores de sincronização.
+- [x] Validar permissões, armazenamento e recuperação de dados.
+- [x] Adicionar resolução de conflito ou migração assistida entre acervo local e remoto.
+- [x] Validar vínculos por tipo e cobrir upload e associação de exemplares com testes.
+- [x] Cobrir acesso não autorizado e integridade de backup/restauração em testes automatizados.
+- [x] Preservar explicitamente o cache local ao optar por usar o acervo remoto e testar esse fluxo.
+- [x] Criar testes de integridade do snapshot e da restauração sem depender de retorno totalmente mockado.
+- [x] Testar o arquivamento e a recuperação do cache local no fluxo de escolha da cópia remota.
+- [x] Testar a restauração real no acesso a dados, incluindo exclusão e reinserção de livros, regras e exemplares.
+- [x] Cobrir ponta a ponta a decisão de usar a cópia remota, arquivar o cache local e recuperá-lo depois.
+- [x] Exercitar a decisão de conflito e a recuperação do cache no estado real da página em teste de interface.
+- [x] Definir e persistir histórico de leitura por livro.
+- [x] Criar interface para iniciar, atualizar e concluir leituras.
+- [x] Consultar ISBN para preencher título, autores, editora, data, páginas e resumo quando disponíveis.
+- [x] Associar e armazenar a capa retornada pela consulta ISBN.
+- [x] Validar consultas sem resultado, erros de rede e dados incompletos.
+- [x] Exibir e permitir revisar editora, data, páginas e resumo retornados pelo ISBN dentro da ficha.
+- [x] Cobrir em teste de interface a exibição completa de metadados ISBN na ficha do livro.
+- [x] Definir metas mensais e anuais de leitura persistentes por usuário.
+- [x] Exibir progresso e permitir configurar metas na área de leitura.
+- [x] Exportar diário de leitura em Excel com registros, progresso e resumo de metas.
+- [x] Validar cálculos de metas, persistência e estrutura do arquivo Excel.
+- [x] Definir critérios para identificar livros em andamento a partir do diário.
+- [x] Criar estante “Lendo agora” com capa, progresso e atualização mais recente.
+- [x] Adicionar atalhos da estante para registrar avanço e acessar o diário.
+- [x] Validar estados sem leituras, pausas, conclusão e progresso exibido.
+- [x] Exibir sempre a data e hora da última atualização, inclusive quando houver anotação recente, e cobrir esse comportamento em teste.
+- [x] Cobrir em teste de interface a exibição simultânea de anotação recente e data/hora na estante “Lendo agora”.
+- [x] Definir e persistir itens da lista “Quero ler” com prioridade e observação.
+- [x] Criar a área “Quero ler” com ordenação e estados vazios.
+- [x] Permitir adicionar obras existentes, editar prioridade e remover itens da lista.
+- [x] Mover um item planejado para “Lendo agora” ao iniciar a leitura.
+- [x] Validar sincronização, ordenação, inclusão e início de leitura.
+- [x] Cobrir a hidratação da lista “Quero ler” a partir do snapshot autenticado.
+- [x] Cobrir a reordenação real de duas obras e a persistência da nova sequência.
+- [x] Preparar apresentação em slides sobre regras e palavras-chave de classificação.
+- [x] Gerar e entregar apresentação resumida do modelo de classificação.
+- [x] Definir limites, frequência e destino de alertas para itens em Literatura Geral.
+- [x] Projetar painel e relatório automático de itens pendentes de classificação.
+- [x] Definir preferência por usuário para limite absoluto, limite percentual e frequência do relatório.
+- [x] Criar persistência e cálculo de indicadores de Literatura Geral por importação.
+- [x] Criar painel de pendências com agrupamentos por autor, termo e coleção.
+- [x] Exibir alerta pós-importação quando os limites de Literatura Geral forem excedidos.
+- [x] Exportar relatório de itens pendentes e padrões recorrentes em Excel.
+- [x] Agendar relatório periódico idempotente e permitir pausar ou ajustar sua frequência.
+- [x] Cobrir limites, agrupamentos, alerta, exportação e execução agendada com testes automatizados.
+- [x] Atualizar o agendamento existente quando a frequência do relatório mudar.
+- [x] Cobrir em interface o alerta pós-importação e a exportação Excel de classificação.
+- [x] Cobrir o endpoint agendado com autenticação cron, busca por tarefa e idempotência.
+- [x] Consolidar o fluxo de catalogação, monitoramento, backups e automação em uma habilidade reutilizável.
+- [x] Validar e entregar a habilidade de gestão de acervos digitais.
+- [x] Definir política de backup automático em nuvem para o acervo Shinko.
+- [x] Preparar roteiro e apresentação de treinamento da equipe para uso do app.
+- [x] Avaliar e definir a ferramenta de automação para backup diário em nuvem do acervo Shinko.
+- [x] Definir fluxo simples de backup diário da lista do acervo em repositório privado do GitHub.
+- [x] Integrar o repositório privado stokkr-coder/Shinko-Toshokan ao backup diário do acervo.
+- [x] Armazenar versões JSON datadas e uma cópia atual da lista do acervo no GitHub.
+- [x] Criar controles para executar, pausar e recuperar backups do GitHub.
+- [x] Validar envio, recuperação e agendamento diário com testes automatizados.
+- [x] Publicar a nova versão e ativar o agendamento diário na área Backup.
+- [x] Confirmar a persistência do lote recém-importado antes do primeiro envio ao GitHub.
+- [x] Implementar listagem e restauração segura de uma versão do GitHub para o acervo sincronizado.
+- [x] Adicionar procedures e testes para recuperar uma versão GitHub, incluindo sucesso, erro e confirmação do usuário.
+- [ ] Exportar o código-fonte completo da Biblioteca Shinko para o repositório privado no GitHub.

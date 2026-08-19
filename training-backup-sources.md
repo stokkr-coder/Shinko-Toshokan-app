@@ -1,0 +1,5 @@
+# Fontes de backup para treinamento
+
+- CISA — Back Up Business Data: recomenda inventariar dados críticos, aplicar a regra 3-2-1, automatizar cópias recorrentes, proteger com controles como criptografia e cópias offline, além de testar restaurações completas e parciais. URL: https://www.cisa.gov/audiences/small-and-medium-businesses/secure-your-business/back-up-business-data
+- CISA — #StopRansomware Guide: recomenda manter backups críticos offline e criptografados, testar regularmente disponibilidade e integridade em cenários de recuperação, e restringir acesso com controles de identidade. URL: https://www.cisa.gov/stopransomware/ransomware-guide
+- NIST NCCoE — Protecting Data from Ransomware and Other Data Loss Events: orienta planejar, manter e testar backups para melhorar a disponibilidade e reduzir impacto de ransomware, falhas de hardware e destruição acidental ou intencional. URL: https://csrc.nist.gov/pubs/other/2020/04/24/protecting-data-from-ransomware-and-other-data-los/final

@@ -1,0 +1,1 @@
+ALTER TABLE `classification_reports` ADD CONSTRAINT `classification_reports_user_period_unique` UNIQUE(`userId`,`source`,`periodStart`);
