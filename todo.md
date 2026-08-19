@@ -77,6 +77,7 @@
 - [x] Implementar listagem e restauração segura de uma versão do GitHub para o acervo sincronizado.
 - [x] Adicionar procedures e testes para recuperar uma versão GitHub, incluindo sucesso, erro e confirmação do usuário.
 - [x] Exportar o código-fonte completo da Biblioteca Shinko para o repositório privado no GitHub.
-- [ ] Proteger a branch main do repositório de código-fonte contra alterações sem validação.
+- [x] Proteger a branch main do repositório de código-fonte contra alterações sem validação.
+- [x] Tornar público o repositório de código-fonte para habilitar a proteção gratuita da branch main.
 - [x] Configurar um workflow GitHub Actions para executar testes, checagem de tipos e build em alterações do código.
 - [x] Ampliar a busca do acervo com filtros adicionais para facilitar a navegação.
