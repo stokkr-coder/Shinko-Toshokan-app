@@ -253,6 +253,13 @@ type CollectionRule = {
 function detectCollection(raw: string, currentTitle: string): CollectionRule {
   const source = raw.replace(/\.[a-z0-9]{2,5}$/i, "").trim();
   const collectionSource = source.replace(/^[^–—-]+,\s*[^–—-]+\s*[-–—]\s*/i, "");
+  const bracketedSeries = collectionSource.match(/^\s*\[([^\]]*?)\s+(\d{1,3})\]\s*(.+)$/);
+  if (bracketedSeries) {
+    const collection = normalizeText(bracketedSeries[1]);
+    const issue = bracketedSeries[2].padStart(2, "0");
+    const seriesCode = withoutAccents(collection).replace(/[^a-z0-9]/gi, "").toUpperCase().slice(0, 4) || "SER";
+    return { collection, seriesCode, seriesNumber: `Livro ${issue}`, title: normalizeText(bracketedSeries[3]), volume: issue };
+  }
   const patristica = collectionSource.match(/^\s*patr[ií]stica\s+vol(?:ume)?\.?\s*(\d{1,3})(?:\s*[_\-.]\s*(\d{1,2}))?\s*-\s*(.+)$/i);
   if (patristica) {
     const volume = patristica[1].padStart(2, "0").slice(-2);
@@ -263,7 +270,7 @@ function detectCollection(raw: string, currentTitle: string): CollectionRule {
       seriesCode: "PATR",
       seriesNumber: `Vol. ${volume}${part ? ` · parte ${part}` : ""}`,
       title: `Patrística Vol. ${volume}${part ? `.${part}` : ""} — ${workTitle}`,
-      volume,
+      volume: part ? `${volume}.${part}` : volume,
       hasPart: Boolean(part),
       media: "0T",
       genre: "01",
@@ -396,7 +403,7 @@ function parseRawBook(raw: string, uid: string = crypto.randomUUID()): BookRecor
 
   if (!author) warnings.push("Autor não identificado automaticamente.");
   if (classification.confidence === "Revisar") warnings.push("Gênero sugerido por padrão; revise a classificação.");
-  if (volumeResult.hasPart) warnings.push("Volume com parte detectada; confirme o número para evitar IDs repetidos.");
+  if (volumeResult.hasPart) warnings.push("Volume com parte detectada; confirme a ordem das partes.");
   if (inference === "Revisar") warnings.push("Estrutura do nome original pede revisão manual.");
 
   const form = {

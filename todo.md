@@ -81,3 +81,6 @@
 - [x] Tornar público o repositório de código-fonte para habilitar a proteção gratuita da branch main.
 - [x] Configurar um workflow GitHub Actions para executar testes, checagem de tipos e build em alterações do código.
 - [x] Ampliar a busca do acervo com filtros adicionais para facilitar a navegação.
+- [ ] Preparar a migração da Biblioteca Shinko para hospedagem externa gratuita com acesso público controlado.
+- [x] Identificar e normalizar partes de um mesmo volume de Patrística sem perder a numeração do tomo.
+- [x] Extrair série e número quando o título original trouxer essa informação entre colchetes.
