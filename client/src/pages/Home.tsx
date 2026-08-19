@@ -73,7 +73,11 @@ type AdvancedFilterCriteria = {
   collection: string;
   media: string;
   extension: string;
+  confidence: string;
+  assetState: string;
 };
+
+type SearchSort = "title" | "author" | "shinko";
 
 type EditableRule = {
   uid: string;
@@ -448,7 +452,7 @@ function matchesAdvancedFilters(record: BookRecord, filters: AdvancedFilterCrite
   const normalizedQuery = withoutAccents(filters.query).toLowerCase();
   const matchesQuery = !normalizedQuery || withoutAccents(`${record.raw} ${record.title} ${record.author} ${record.collection} ${record.seriesCode} ${record.seriesNumber} ${record.shinkoId} ${record.classification}`).toLowerCase().includes(normalizedQuery);
   const matchesStatus = filters.status === "all" || (filters.status === "review" && record.warnings.length > 0) || (filters.status === "duplicate" && record.duplicate) || (filters.status === "ready" && record.warnings.length === 0 && !record.duplicate);
-  return matchesQuery && matchesStatus && (filters.genre === "all" || record.genre === filters.genre) && (filters.author === "all" || record.author === filters.author) && (filters.collection === "all" || record.collection === filters.collection) && (filters.media === "all" || record.media === filters.media) && (filters.extension === "all" || record.extension === filters.extension);
+  return matchesQuery && matchesStatus && (filters.genre === "all" || record.genre === filters.genre) && (filters.author === "all" || record.author === filters.author) && (filters.collection === "all" || record.collection === filters.collection) && (filters.media === "all" || record.media === filters.media) && (filters.extension === "all" || record.extension === filters.extension) && (filters.confidence === "all" || record.confidence === filters.confidence);
 }
 
 function applyEditableRule(record: BookRecord, rules: EditableRule[]) {
@@ -596,6 +600,9 @@ export default function Home() {
   const [collectionFilter, setCollectionFilter] = useState("all");
   const [mediaFilter, setMediaFilter] = useState("all");
   const [extensionFilter, setExtensionFilter] = useState("all");
+  const [confidenceFilter, setConfidenceFilter] = useState("all");
+  const [assetFilter, setAssetFilter] = useState("all");
+  const [searchSort, setSearchSort] = useState<SearchSort>("title");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [selectedUids, setSelectedUids] = useState<string[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -689,14 +696,22 @@ export default function Home() {
   const authorOptions = useMemo(() => Array.from(new Set(records.map((record) => record.author).filter(Boolean))).sort((a, b) => a.localeCompare(b, "pt-BR")), [records]);
   const collectionOptions = useMemo(() => Array.from(new Set(records.map((record) => record.collection).filter(Boolean))).sort((a, b) => a.localeCompare(b, "pt-BR")), [records]);
   const extensionOptions = useMemo(() => Array.from(new Set(records.map((record) => record.extension).filter(Boolean))).sort(), [records]);
-  const activeFilterCount = [status !== "all", genreFilter !== "all", authorFilter !== "all", collectionFilter !== "all", mediaFilter !== "all", extensionFilter !== "all"].filter(Boolean).length;
+  const activeFilterCount = [status !== "all", genreFilter !== "all", authorFilter !== "all", collectionFilter !== "all", mediaFilter !== "all", extensionFilter !== "all", confidenceFilter !== "all", assetFilter !== "all"].filter(Boolean).length;
 
   const visibleRecords = useMemo(() => {
-    return records.filter((record) => {
+    const linkedBookUids = new Set(assets.map((asset) => asset.bookUid));
+    const filtered = records.filter((record) => {
       const matchesView = activeView !== "revisar" || record.warnings.length > 0;
-      return matchesAdvancedFilters(record, { query, status, genre: genreFilter, author: authorFilter, collection: collectionFilter, media: mediaFilter, extension: extensionFilter }) && matchesView;
+      const hasAsset = linkedBookUids.has(record.uid);
+      const matchesAssets = assetFilter === "all" || (assetFilter === "linked" && hasAsset) || (assetFilter === "unlinked" && !hasAsset);
+      return matchesAdvancedFilters(record, { query, status, genre: genreFilter, author: authorFilter, collection: collectionFilter, media: mediaFilter, extension: extensionFilter, confidence: confidenceFilter, assetState: assetFilter }) && matchesAssets && matchesView;
     });
-  }, [activeView, authorFilter, collectionFilter, extensionFilter, genreFilter, mediaFilter, query, records, status]);
+    return filtered.sort((left, right) => {
+      if (searchSort === "author") return left.author.localeCompare(right.author, "pt-BR") || left.title.localeCompare(right.title, "pt-BR");
+      if (searchSort === "shinko") return left.shinkoId.localeCompare(right.shinkoId, "pt-BR");
+      return left.title.localeCompare(right.title, "pt-BR") || left.author.localeCompare(right.author, "pt-BR");
+    });
+  }, [activeView, assets, assetFilter, authorFilter, collectionFilter, confidenceFilter, extensionFilter, genreFilter, mediaFilter, query, records, searchSort, status]);
 
   const approvableReviewIds = useMemo(() => visibleRecords.filter((record) => !record.duplicate && record.warnings.length > 0).map((record) => record.uid), [visibleRecords]);
   const selectedApprovals = selectedUids.filter((uid) => approvableReviewIds.includes(uid));
@@ -709,6 +724,9 @@ export default function Home() {
     setCollectionFilter("all");
     setMediaFilter("all");
     setExtensionFilter("all");
+    setConfidenceFilter("all");
+    setAssetFilter("all");
+    setSearchSort("title");
     setQuery("");
   }
 
@@ -1219,7 +1237,7 @@ export default function Home() {
               </div>
 
               {advancedOpen && <div className="advanced-filters">
-                <div className="advanced-heading"><div><span>FILTROS COMBINÁVEIS</span><p>Refine o acervo por classificação, autoria, coleção e estado de revisão.</p></div><button type="button" onClick={clearAdvancedFilters} className="clear-filters">Limpar filtros</button></div>
+                <div className="advanced-heading"><div><span>FILTROS COMBINÁVEIS</span><p>Refine o acervo por classificação, autoria, coleção, qualidade do catálogo e disponibilidade de exemplares.</p></div><button type="button" onClick={clearAdvancedFilters} className="clear-filters">Limpar filtros</button></div>
                 <div className="advanced-grid">
                   <label><span>Gênero</span><select value={genreFilter} onChange={(event) => setGenreFilter(event.target.value)}><option value="all">Todos os gêneros</option>{genreOptions.map((option) => <option key={option.code} value={option.code}>{option.code} · {option.label}</option>)}</select></label>
                   <label><span>Autor</span><select value={authorFilter} onChange={(event) => setAuthorFilter(event.target.value)}><option value="all">Todos os autores</option>{authorOptions.map((author) => <option key={author} value={author}>{author}</option>)}</select></label>
@@ -1227,6 +1245,9 @@ export default function Home() {
                   <label><span>Status</span><select value={status} onChange={(event) => setStatus(event.target.value as RecordStatus)}><option value="all">Todos os estados</option><option value="ready">Prontos</option><option value="review">Precisam de revisão</option><option value="duplicate">Duplicidades</option></select></label>
                   <label><span>Mídia</span><select value={mediaFilter} onChange={(event) => setMediaFilter(event.target.value)}><option value="all">Todas as mídias</option>{mediaOptions.map((option) => <option key={option.code} value={option.code}>{option.code} · {option.label}</option>)}</select></label>
                   <label><span>Extensão</span><select value={extensionFilter} onChange={(event) => setExtensionFilter(event.target.value)}><option value="all">Todas as extensões</option>{extensionOptions.map((extension) => <option key={extension} value={extension}>.{extension}</option>)}</select></label>
+                  <label><span>Confiança da classificação</span><select value={confidenceFilter} onChange={(event) => setConfidenceFilter(event.target.value)}><option value="all">Todos os níveis</option><option value="Alta">Alta</option><option value="Média">Média</option><option value="Revisar">A revisar</option></select></label>
+                  <label><span>Exemplares vinculados</span><select value={assetFilter} onChange={(event) => setAssetFilter(event.target.value)}><option value="all">Com ou sem vínculo</option><option value="linked">Com exemplar, link ou arquivo</option><option value="unlinked">Sem exemplar, link ou arquivo</option></select></label>
+                  <label><span>Ordenar resultados</span><select value={searchSort} onChange={(event) => setSearchSort(event.target.value as SearchSort)}><option value="title">Título (A–Z)</option><option value="author">Autor (A–Z)</option><option value="shinko">ID Shinko</option></select></label>
                 </div>
                 {activeFilterCount > 0 && <div className="active-filter-note"><span>FILTRANDO</span><code>{activeFilterCount} critério{activeFilterCount > 1 ? "s" : ""} ativo{activeFilterCount > 1 ? "s" : ""}</code></div>}
               </div>}

@@ -1,0 +1,33 @@
+name: Validar Biblioteca Shinko
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validar:
+    name: Testes, tipos e build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Obter código
+        uses: actions/checkout@v4
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Habilitar pnpm
+        run: corepack enable
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+      - name: Executar testes
+        run: pnpm test
+      - name: Checar tipos
+        run: pnpm check
+      - name: Gerar build
+        run: pnpm build
