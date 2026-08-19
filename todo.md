@@ -76,4 +76,4 @@
 - [x] Confirmar a persistência do lote recém-importado antes do primeiro envio ao GitHub.
 - [x] Implementar listagem e restauração segura de uma versão do GitHub para o acervo sincronizado.
 - [x] Adicionar procedures e testes para recuperar uma versão GitHub, incluindo sucesso, erro e confirmação do usuário.
-- [ ] Exportar o código-fonte completo da Biblioteca Shinko para o repositório privado no GitHub.
+- [x] Exportar o código-fonte completo da Biblioteca Shinko para o repositório privado no GitHub.
