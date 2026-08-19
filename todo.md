@@ -78,5 +78,5 @@
 - [x] Adicionar procedures e testes para recuperar uma versão GitHub, incluindo sucesso, erro e confirmação do usuário.
 - [x] Exportar o código-fonte completo da Biblioteca Shinko para o repositório privado no GitHub.
 - [ ] Proteger a branch main do repositório de código-fonte contra alterações sem validação.
-- [ ] Configurar um workflow GitHub Actions para executar testes, checagem de tipos e build em alterações do código.
-- [ ] Ampliar a busca do acervo com filtros adicionais para facilitar a navegação.
+- [x] Configurar um workflow GitHub Actions para executar testes, checagem de tipos e build em alterações do código.
+- [x] Ampliar a busca do acervo com filtros adicionais para facilitar a navegação.
