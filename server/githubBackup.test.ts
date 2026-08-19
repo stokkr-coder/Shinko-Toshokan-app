@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildGitHubCatalogBackup, listGitHubCatalogBackups, readGitHubCatalogBackup, uploadGitHubCatalogBackup } from "./githubBackup";
 
 const snapshot = {
@@ -6,7 +6,10 @@ const snapshot = {
   rules: [{ uid: "regra-1", name: "Teste", matcher: "teste", collection: "", seriesCode: "", media: "0L", genre: "60", defaultAuthor: "", active: true }],
 };
 
+const originalBackupToken = process.env.GITHUB_BACKUP_TOKEN;
+beforeEach(() => { process.env.GITHUB_BACKUP_TOKEN = "token-de-teste"; });
 afterEach(() => vi.restoreAllMocks());
+afterAll(() => { if (originalBackupToken === undefined) delete process.env.GITHUB_BACKUP_TOKEN; else process.env.GITHUB_BACKUP_TOKEN = originalBackupToken; });
 
 describe("backup GitHub do catálogo", () => {
   it("gera um documento portátil somente com lista e regras", () => {
