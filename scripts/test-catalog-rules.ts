@@ -10,6 +10,15 @@ assert.equal(patristica.media, "0T");
 assert.equal(patristica.genre, "01");
 assert.equal(patristica.shinkoId, "ST.0T.01.AGOS-10");
 
+const patristicaPart = catalogationDiagnostics.parseRawBook("Patrística Vol. 27_2 - Comentário as cartas de Sao Paulo - Sao Joao Crisóstomo");
+assert.equal(patristicaPart.volume, "27.02");
+assert.equal(patristicaPart.shinkoId, "ST.0T.01.CRIS-27.02");
+
+const bracketedSeries = catalogationDiagnostics.parseRawBook("CHANDLER, A. Bertram - [Rim Worlds Derek Calver 01] The Rim of Space");
+assert.equal(bracketedSeries.collection, "Rim Worlds Derek Calver");
+assert.equal(bracketedSeries.seriesNumber, "Livro 01");
+assert.equal(bracketedSeries.title, "The Rim of Space");
+
 const perry = catalogationDiagnostics.parseRawBook("Perry Rhodan - PR1825 - Luta por Trieger - Hubert Haensel");
 assert.equal(perry.collection, "Perry Rhodan");
 assert.equal(perry.seriesCode, "PR1825");
@@ -36,7 +45,7 @@ assert.equal(youjo.author, "ZEN, Carlo");
 assert.equal(youjo.media, "3M");
 assert.equal(youjo.volume, "03");
 
-const filters = { query: "", status: "all" as const, genre: "all", author: "all", collection: "all", media: "all", extension: "all" };
+const filters = { query: "", status: "all" as const, genre: "all", author: "all", collection: "all", media: "all", extension: "all", confidence: "all" as const };
 assert.equal(catalogationDiagnostics.matchesAdvancedFilters(perry, { ...filters, genre: "41" }), true);
 assert.equal(catalogationDiagnostics.matchesAdvancedFilters(perry, { ...filters, author: "HAENSEL, Hubert" }), true);
 assert.equal(catalogationDiagnostics.matchesAdvancedFilters(patristica, { ...filters, collection: "Perry Rhodan" }), false);
