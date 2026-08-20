@@ -40,6 +40,8 @@ import { toast } from "sonner";
 type LibraryView = "acervo" | "revisar" | "taxonomia" | "regras" | "classificacao" | "leitura" | "quero-ler" | "backup";
 type RecordStatus = "all" | "review" | "duplicate" | "ready";
 
+const usesExternalHosting = () => import.meta.env.VITE_AUTH_PROVIDER === "google";
+
 type BookRecord = {
   uid: string;
   raw: string;
@@ -509,12 +511,22 @@ function asEditableRule(rule: Record<string, unknown>): EditableRule {
   return { uid: String(rule.uid), name: String(rule.name), matcher: String(rule.matcher), collection: String(rule.collection), seriesCode: String(rule.seriesCode), media: String(rule.media), genre: String(rule.genre), defaultAuthor: String(rule.defaultAuthor), active: Number(rule.active) === 1 };
 }
 
-function asLinkedAsset(asset: Record<string, unknown>): LinkedAsset {
-  return { uid: String(asset.uid), bookUid: String(asset.bookUid), kind: asset.kind as LinkedAsset["kind"], label: String(asset.label), location: String(asset.location), sourceUrl: String(asset.sourceUrl), storageKey: String(asset.storageKey), storageUrl: String(asset.storageUrl), mimeType: String(asset.mimeType), byteSize: Number(asset.byteSize) };
+function isExternalManusStorageUrl(value: string): boolean {
+  return usesExternalHosting() && /(?:^|\/)manus-storage(?:\/|$)/.test(value);
 }
 
-function asBookMetadata(metadata: Record<string, unknown>): BookMetadata {
-  return { bookUid: String(metadata.bookUid), isbn: String(metadata.isbn), subtitle: String(metadata.subtitle), publisher: String(metadata.publisher), publishedDate: String(metadata.publishedDate), pageCount: Number(metadata.pageCount), summary: String(metadata.summary), coverUrl: String(metadata.coverUrl), coverStorageKey: String(metadata.coverStorageKey), source: String(metadata.source), sourceUrl: String(metadata.sourceUrl) };
+export function asLinkedAsset(asset: Record<string, unknown>): LinkedAsset {
+  const storageUrl = String(asset.storageUrl);
+  const unavailableInExternalMode = isExternalManusStorageUrl(storageUrl);
+  const kind = asset.kind as LinkedAsset["kind"];
+  const fileUnavailableInExternalMode = usesExternalHosting() && kind === "digital-file" && (!storageUrl || unavailableInExternalMode);
+  return { uid: String(asset.uid), bookUid: String(asset.bookUid), kind, label: String(asset.label), location: fileUnavailableInExternalMode ? "Arquivo indisponível nesta versão externa; consulte a cópia Manus ou adicione um link digital." : String(asset.location), sourceUrl: String(asset.sourceUrl), storageKey: unavailableInExternalMode ? "" : String(asset.storageKey), storageUrl: unavailableInExternalMode ? "" : storageUrl, mimeType: String(asset.mimeType), byteSize: Number(asset.byteSize) };
+}
+
+export function asBookMetadata(metadata: Record<string, unknown>): BookMetadata {
+  const coverUrl = String(metadata.coverUrl);
+  const unavailableInExternalMode = isExternalManusStorageUrl(coverUrl);
+  return { bookUid: String(metadata.bookUid), isbn: String(metadata.isbn), subtitle: String(metadata.subtitle), publisher: String(metadata.publisher), publishedDate: String(metadata.publishedDate), pageCount: Number(metadata.pageCount), summary: String(metadata.summary), coverUrl: unavailableInExternalMode ? "" : coverUrl, coverStorageKey: unavailableInExternalMode ? "" : String(metadata.coverStorageKey), source: String(metadata.source), sourceUrl: String(metadata.sourceUrl) };
 }
 
 function asReadingEvent(event: Record<string, unknown>): ReadingEvent {
@@ -560,6 +572,8 @@ export default function Home() {
   // startLogin() during render (no href={startLogin()}) — it mints a one-time
   // nonce cookie and must run only at the moment of navigation.
   const { user, loading, isAuthenticated, logout } = useAuth();
+  const externalReader = import.meta.env.VITE_AUTH_PROVIDER === "google" && isAuthenticated && user?.role !== "admin";
+  const canManage = !externalReader;
   const cloud = trpc.useUtils();
   const snapshotQuery = trpc.library.snapshot.useQuery(undefined, { enabled: isAuthenticated, refetchOnWindowFocus: false });
   const rulesQuery = trpc.library.rules.list.useQuery(undefined, { enabled: isAuthenticated, refetchOnWindowFocus: false });
@@ -583,6 +597,7 @@ export default function Home() {
   const removeAssetMutation = trpc.library.assets.remove.useMutation();
   const createBackupMutation = trpc.library.backups.create.useMutation();
   const restoreBackupMutation = trpc.library.backups.restore.useMutation();
+  const importSnapshotMutation = trpc.library.backups.importSnapshot.useMutation();
   const lookupIsbnMutation = trpc.library.metadata.lookupIsbn.useMutation();
   const saveMetadataMutation = trpc.library.metadata.save.useMutation();
   const addReadingMutation = trpc.library.reading.add.useMutation();
@@ -633,6 +648,7 @@ export default function Home() {
   const [assetEntry, setAssetEntry] = useState<AssetForm>(emptyAsset);
   const inputRef = useRef<HTMLInputElement>(null);
   const assetFileRef = useRef<HTMLInputElement>(null);
+  const externalSnapshotRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
@@ -851,6 +867,31 @@ export default function Home() {
   function createBackup() {
     if (!isAuthenticated) { startLogin(); return; }
     createBackupMutation.mutate({ label: `Backup Shinko — ${new Date().toLocaleString("pt-BR")}` }, { onSuccess: () => { cloud.library.backups.invalidate(); toast.success("Cópia de segurança criada."); }, onError: () => toast.error("Não foi possível criar a cópia de segurança.") });
+  }
+
+  function exportExternalSnapshot() {
+    if (!snapshotQuery.data) { toast.error("A cópia sincronizada ainda não terminou de carregar."); return; }
+    const blob = new Blob([JSON.stringify(snapshotQuery.data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `biblioteca-shinko-migracao-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    toast.success("Snapshot completo exportado para a migração externa.");
+  }
+
+  function importExternalSnapshot(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const snapshotJson = String(reader.result || "");
+      if (!window.confirm("Importar esta cópia completa? O acervo externo atual será substituído.")) return;
+      importSnapshotMutation.mutate({ snapshotJson }, { onSuccess: (result) => { cloud.library.snapshot.invalidate(); cloud.library.rules.invalidate(); cloud.library.assets.invalidate(); cloud.library.metadata.invalidate(); cloud.library.reading.invalidate(); cloud.library.readingGoals.invalidate(); cloud.library.wantToRead.invalidate(); toast.success(`Migração concluída: ${result.bookCount} livros e ${result.ruleCount} regras.`); }, onError: () => toast.error("Não foi possível importar a cópia. Verifique se o arquivo é um snapshot válido.") });
+    };
+    reader.readAsText(file);
+    event.target.value = "";
   }
 
   function runGitHubBackup() {
@@ -1128,10 +1169,11 @@ export default function Home() {
     <div className="min-h-screen bg-[#f5f0e6] text-[#1d2a25]">
       <input ref={inputRef} onChange={handleImport} className="hidden" type="file" accept=".xlsx,.xls,.csv" />
       <input ref={assetFileRef} onChange={uploadAsset} className="hidden" type="file" accept=".epub,.pdf,.mobi,.cbz,.zip,.txt" />
+      <input ref={externalSnapshotRef} onChange={importExternalSnapshot} className="hidden" type="file" accept="application/json,.json" />
       <div className="app-shell">
         <aside className="sidebar">
           <div className="brand-lockup">
-            <img src="/manus-storage/shinko-mark_720fa080.png" alt="Símbolo Biblioteca Shinko" className="brand-mark" />
+            <CatalogArtwork src="/manus-storage/shinko-mark_720fa080.png" alt="Símbolo Biblioteca Shinko" className="brand-mark" variant="mark" />
             <div>
               <p className="eyebrow text-[#b84432]">Shinko Toshokan</p>
               <p className="brand-name">Biblioteca<br />Shinko</p>
@@ -1142,27 +1184,27 @@ export default function Home() {
             <button className={activeView === "acervo" ? "nav-item active" : "nav-item"} onClick={() => { setActiveView("acervo"); setStatus("all"); }}>
               <Library size={18} /> <span>Acervo</span><b>{metrics.total}</b>
             </button>
-            <button className={activeView === "revisar" ? "nav-item active" : "nav-item"} onClick={() => { setActiveView("revisar"); setStatus("review"); }}>
+            {canManage && <button className={activeView === "revisar" ? "nav-item active" : "nav-item"} onClick={() => { setActiveView("revisar"); setStatus("review"); }}>
               <AlertTriangle size={18} /> <span>Revisar</span><b>{metrics.review}</b>
-            </button>
+            </button>}
             <button className={activeView === "taxonomia" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("taxonomia")}>
               <FolderArchive size={18} /> <span>Taxonomia</span><b>18</b>
             </button>
-            <button className={activeView === "regras" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("regras")}>
+            {canManage && <button className={activeView === "regras" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("regras")}>
               <Settings2 size={18} /> <span>Regras</span><b>{rules.length}</b>
-            </button>
-            <button className={activeView === "classificacao" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("classificacao")}>
+            </button>}
+            {canManage && <button className={activeView === "classificacao" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("classificacao")}>
               <Sparkles size={18} /> <span>Classificação</span><b>{classificationDashboardQuery.data?.generalCount || records.filter((record) => record.media === "0L" && record.genre === "60" && record.confidence === "Revisar").length}</b>
-            </button>
-            <button className={activeView === "leitura" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("leitura")}>
+            </button>}
+            {canManage && <button className={activeView === "leitura" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("leitura")}>
               <BookOpen size={18} /> <span>Leitura</span><b>{readingEvents.length}</b>
-            </button>
-            <button className={activeView === "quero-ler" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("quero-ler")}>
+            </button>}
+            {canManage && <button className={activeView === "quero-ler" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("quero-ler")}>
               <BookMarked size={18} /> <span>Quero ler</span><b>{wantToRead.length}</b>
-            </button>
-            <button className={activeView === "backup" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("backup")}>
+            </button>}
+            {canManage && <button className={activeView === "backup" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("backup")}>
               <ShieldCheck size={18} /> <span>Backup</span><b>{backupsQuery.data?.length || 0}</b>
-            </button>
+            </button>}
           </nav>
 
           <div className="sidebar-footer">
@@ -1170,7 +1212,7 @@ export default function Home() {
               <ShieldCheck size={17} />
               <p><strong>{isAuthenticated ? "Acervo sincronizado." : "Modo local ativo."}</strong><br />{isAuthenticated ? "Regras, vínculos e backups ficam protegidos na sua conta." : "Entre para proteger o acervo e acessar em outros dispositivos."}</p>
             </div>
-            {localArchive.length > 0 && <button onClick={restoreLocalArchive} className="quiet-button">Adicionar {localArchive.length} registros arquivados</button>}
+            {canManage && localArchive.length > 0 && <button onClick={restoreLocalArchive} className="quiet-button">Adicionar {localArchive.length} registros arquivados</button>}
             {isAuthenticated ? <button onClick={() => logout()} className="quiet-button">Sair da conta</button> : <button onClick={startLogin} className="quiet-button">Entrar e sincronizar</button>}
           </div>
         </aside>
@@ -1179,24 +1221,23 @@ export default function Home() {
           <header className="topbar">
             <div>
               <p className="eyebrow">Mesa de catalogação</p>
-              <p className="topbar-status"><span /> {loading ? "Conectando à conta" : isAuthenticated ? `Sincronizado · ${user?.name || "sua conta"}` : "Pronta para organizar localmente"}</p>
+              <p className="topbar-status"><span /> {loading ? "Conectando à conta" : externalReader ? `Consulta compartilhada · ${user?.name || "sua conta"}` : isAuthenticated ? `Sincronizado · ${user?.name || "sua conta"}` : "Pronta para organizar localmente"}</p>
             </div>
             <div className="topbar-actions">
               {!isAuthenticated && <button onClick={startLogin} className="button button-quiet"><ShieldCheck size={17} /> Sincronizar</button>}
-              <button onClick={() => inputRef.current?.click()} className="button button-quiet"><Upload size={17} /> Importar</button>
-              <button onClick={openNewRecord} className="button button-primary"><Plus size={18} /> Novo livro</button>
+              {canManage && <><button onClick={() => inputRef.current?.click()} className="button button-quiet"><Upload size={17} /> Importar</button><button onClick={openNewRecord} className="button button-primary"><Plus size={18} /> Novo livro</button></>}
             </div>
           </header>
 
           <section className="hero-panel">
             <div className="hero-index" aria-hidden="true"><span>ARQ. 001</span><b>ST</b><span>MESA</span></div>
-            <img className="hero-image" src="/manus-storage/shinko-hero-catalog_830fb234.jpg" alt="Mesa de catálogo com livros e fichas de classificação" />
+            <CatalogArtwork className="hero-image" src="/manus-storage/shinko-hero-catalog_830fb234.jpg" alt="Mesa de catálogo com livros e fichas de classificação" variant="hero" />
             <div className="hero-copy">
               <p className="eyebrow text-[#b84432]">Organização com critério</p>
               <h1>Uma lista de arquivos<br /><em>torna-se um acervo.</em></h1>
-              <p>Importe a sua planilha, confirme as sugestões e exporte cada registro com ID Shinko, autor padronizado e nome de arquivo pronto.</p>
+              <p>{externalReader ? "Você tem acesso para consultar e pesquisar o acervo compartilhado." : "Importe a sua planilha, confirme as sugestões e exporte cada registro com ID Shinko, autor padronizado e nome de arquivo pronto."}</p>
               <div className="hero-actions">
-                <button onClick={() => inputRef.current?.click()} className="button button-primary"><FileSpreadsheet size={18} /> Ler planilha</button>
+                {canManage && <button onClick={() => inputRef.current?.click()} className="button button-primary"><FileSpreadsheet size={18} /> Ler planilha</button>}
                 <button onClick={() => setActiveView("taxonomia")} className="text-link">Consultar taxonomia <ChevronRight size={16} /></button>
               </div>
             </div>
@@ -1225,10 +1266,10 @@ export default function Home() {
           ) : activeView === "quero-ler" ? (
             <WantToReadView items={wantToRead} records={records} metadata={metadata} isAuthenticated={isAuthenticated} onLogin={startLogin} onSave={saveWantToRead} onRemove={removeFromWantToRead} onMove={moveWantToRead} onBegin={beginPlannedReading} isBusy={saveWantToReadMutation.isPending || removeWantToReadMutation.isPending || reorderWantToReadMutation.isPending || beginReadingMutation.isPending} />
           ) : activeView === "backup" ? (
-            <BackupView backups={backupsQuery.data || []} githubSettings={githubBackupSettingsQuery.data} githubVersions={githubBackupVersionsQuery.data || []} isLoadingGitHubVersions={githubBackupVersionsQuery.isLoading} isAuthenticated={isAuthenticated} isCreating={createBackupMutation.isPending} isGitHubBusy={runGitHubBackupMutation.isPending || scheduleGitHubBackupMutation.isPending || restoreGitHubBackupMutation.isPending} onCreate={createBackup} onRestore={restoreBackup} onRunGitHub={runGitHubBackup} onScheduleGitHub={scheduleGitHubBackup} onRestoreGitHub={restoreGitHubBackup} onLogin={startLogin} />
+            <><ExternalSnapshotTransfer isAuthenticated={isAuthenticated} isBusy={importSnapshotMutation.isPending} onExport={exportExternalSnapshot} onImport={() => externalSnapshotRef.current?.click()} onLogin={startLogin} /><BackupView backups={backupsQuery.data || []} githubSettings={githubBackupSettingsQuery.data} githubVersions={githubBackupVersionsQuery.data || []} isLoadingGitHubVersions={githubBackupVersionsQuery.isLoading} isAuthenticated={isAuthenticated} isCreating={createBackupMutation.isPending || importSnapshotMutation.isPending} isGitHubBusy={runGitHubBackupMutation.isPending || scheduleGitHubBackupMutation.isPending || restoreGitHubBackupMutation.isPending} onCreate={createBackup} onRestore={restoreBackup} onRunGitHub={runGitHubBackup} onScheduleGitHub={scheduleGitHubBackup} onRestoreGitHub={restoreGitHubBackup} onExportExternal={exportExternalSnapshot} onImportExternal={() => externalSnapshotRef.current?.click()} onLogin={startLogin} /></>
           ) : (
             <section className="records-section">
-              {activeView === "acervo" && <ReadingNowShelf items={readingNow} onOpenReading={openReadingFor} />}
+              {activeView === "acervo" && canManage && <ReadingNowShelf items={readingNow} onOpenReading={openReadingFor} />}
               <div className="section-heading">
                 <div>
                   <p className="eyebrow">{activeView === "revisar" ? "Fila de conferência" : "Acervo em construção"}</p>
@@ -1261,19 +1302,19 @@ export default function Home() {
 
               {visibleRecords.length ? (
                 <>
-                {activeView === "revisar" && <div className="batch-review-bar"><div><span>REVISÃO EM LOTE</span><p>{approvableReviewIds.length} registros elegíveis neste filtro. Duplicidades permanecem para conferência individual.</p></div><div><code>{selectedApprovals.length} selecionado{selectedApprovals.length === 1 ? "" : "s"}</code><button onClick={approveSelected} className="button button-primary" disabled={!selectedApprovals.length}><CheckCircle2 size={17} /> Aprovar selecionados</button></div></div>}
+                {canManage && activeView === "revisar" && <div className="batch-review-bar"><div><span>REVISÃO EM LOTE</span><p>{approvableReviewIds.length} registros elegíveis neste filtro. Duplicidades permanecem para conferência individual.</p></div><div><code>{selectedApprovals.length} selecionado{selectedApprovals.length === 1 ? "" : "s"}</code><button onClick={approveSelected} className="button button-primary" disabled={!selectedApprovals.length}><CheckCircle2 size={17} /> Aprovar selecionados</button></div></div>}
                 <div className="records-table-wrap">
                   <table className="records-table">
-                    <thead><tr>{activeView === "revisar" && <th className="selection-head"><input type="checkbox" checked={allVisibleApprovalsSelected} onChange={toggleAllApprovals} disabled={!approvableReviewIds.length} aria-label="Selecionar todos os registros elegíveis" /></th>}<th>Obra e autoria</th><th>Classificação</th><th>ID Shinko</th><th>Arquivo sugerido</th><th aria-label="Editar" /></tr></thead>
+                    <thead><tr>{canManage && activeView === "revisar" && <th className="selection-head"><input type="checkbox" checked={allVisibleApprovalsSelected} onChange={toggleAllApprovals} disabled={!approvableReviewIds.length} aria-label="Selecionar todos os registros elegíveis" /></th>}<th>Obra e autoria</th><th>Classificação</th><th>ID Shinko</th><th>Arquivo sugerido</th>{canManage && <th aria-label="Editar" />}</tr></thead>
                     <tbody>
                       {visibleRecords.map((record, index) => (
                         <tr key={record.uid} style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}>
-                          {activeView === "revisar" && <td className="selection-cell">{record.duplicate ? <span title="Duplicidade precisa de conferência individual">—</span> : <input type="checkbox" checked={selectedUids.includes(record.uid)} onChange={() => toggleApproval(record.uid)} aria-label={`Selecionar ${record.title}`} />}</td>}
+                          {canManage && activeView === "revisar" && <td className="selection-cell">{record.duplicate ? <span title="Duplicidade precisa de conferência individual">—</span> : <input type="checkbox" checked={selectedUids.includes(record.uid)} onChange={() => toggleApproval(record.uid)} aria-label={`Selecionar ${record.title}`} />}</td>}
                           <td><div className="title-cell">{metadata.find((item) => item.bookUid === record.uid)?.coverUrl && <img className="record-cover" src={metadata.find((item) => item.bookUid === record.uid)?.coverUrl} alt={`Capa de ${record.title}`} />}<strong>{record.title}</strong><span>{record.author || "Autor a confirmar"}</span>{record.collection && <div className="series-meta"><code>{record.collection}</code>{record.seriesCode && <small>{record.seriesCode}{record.seriesNumber ? ` · ${record.seriesNumber}` : ""}</small>}</div>}</div></td>
                           <td><div className="classification-cell"><span className={`confidence ${record.confidence === "Alta" ? "high" : record.confidence === "Média" ? "medium" : "review"}`}>{record.confidence === "Revisar" ? "Revisar" : "Sugestão"}</span><small>{record.media}.{record.genre} · {record.classification}</small>{record.warnings.length > 0 && <span className="warning-line"><AlertTriangle size={13} /> {record.warnings[0]}</span>}</div></td>
                           <td><code>{record.shinkoId}</code></td>
                           <td><button onClick={() => { navigator.clipboard.writeText(record.filename); toast.success("Nome de arquivo copiado."); }} className="filename-button" title="Copiar nome de arquivo">{record.filename}</button></td>
-                          <td className="row-actions"><button onClick={() => addToWantToRead(record)} className="row-action" aria-label={`Adicionar ${record.title} à lista Quero ler`} title={wantToRead.some((item) => item.bookUid === record.uid) ? "Já está em Quero ler" : "Adicionar à lista Quero ler"} disabled={wantToRead.some((item) => item.bookUid === record.uid)}><BookMarked size={16} /></button><button onClick={() => openAssetsFor(record)} className="row-action" aria-label={`Exemplares de ${record.title}`} title="Vincular exemplar"><FolderArchive size={16} /><small>{assets.filter((asset) => asset.bookUid === record.uid).length}</small></button><button onClick={() => openEditRecord(record)} className="row-action" aria-label={`Editar ${record.title}`} title="Editar ficha"><Settings2 size={16} /></button></td>
+                          {canManage && <td className="row-actions"><button onClick={() => addToWantToRead(record)} className="row-action" aria-label={`Adicionar ${record.title} à lista Quero ler`} title={wantToRead.some((item) => item.bookUid === record.uid) ? "Já está em Quero ler" : "Adicionar à lista Quero ler"} disabled={wantToRead.some((item) => item.bookUid === record.uid)}><BookMarked size={16} /></button><button onClick={() => openAssetsFor(record)} className="row-action" aria-label={`Exemplares de ${record.title}`} title="Vincular exemplar"><FolderArchive size={16} /><small>{assets.filter((asset) => asset.bookUid === record.uid).length}</small></button><button onClick={() => openEditRecord(record)} className="row-action" aria-label={`Editar ${record.title}`} title="Editar ficha"><Settings2 size={16} /></button></td>}
                         </tr>
                       ))}
                     </tbody>
@@ -1350,13 +1391,18 @@ function Metric({ code, icon, label, value, note, accent = false }: { code: stri
   return <div className={accent ? "metric-card accent" : "metric-card"}><div className="metric-index"><b>{code}</b>{icon}</div><div><span>{label}</span><strong>{value}</strong><small>{note}</small></div></div>;
 }
 
+function CatalogArtwork({ src, alt, className, variant }: { src: string; alt: string; className: string; variant: "mark" | "hero" | "shelf" | "taxonomy" | "drawer" }) {
+  if (!usesExternalHosting()) return <img src={src} alt={alt} className={className} />;
+  return <div className={`${className} catalog-artwork catalog-artwork-${variant}`} role="img" aria-label={alt}><BookOpen size={variant === "mark" ? 28 : 42} aria-hidden="true" /><span aria-hidden="true">ST</span></div>;
+}
+
 function EmptyState({ view, hasRecords, onImport, onCreate }: { view: LibraryView; hasRecords: boolean; onImport: () => void; onCreate: () => void }) {
   const isReview = view === "revisar" && hasRecords;
-  return <div className="empty-state"><img src="/manus-storage/shinko-empty-shelf_7d95a05a.jpg" alt="Estante de catálogo minimalista" /><div><p className="eyebrow">{isReview ? "Tudo em ordem" : "A primeira ficha"}</p><h3>{isReview ? "Nenhuma pendência neste filtro." : "O acervo está pronto para receber seus livros."}</h3><p>{isReview ? "Ajuste o filtro ou volte ao acervo para consultar os registros já processados." : "Use a planilha original para processar vários títulos de uma vez, ou registre um livro manualmente."}</p><div className="empty-actions">{!isReview && <button onClick={onImport} className="button button-primary"><Upload size={17} /> Importar planilha</button>}<button onClick={onCreate} className="button button-quiet"><Plus size={17} /> Novo livro</button></div></div></div>;
+  return <div className="empty-state"><CatalogArtwork src="/manus-storage/shinko-empty-shelf_7d95a05a.jpg" alt="Estante de catálogo minimalista" className="empty-artwork" variant="shelf" /><div><p className="eyebrow">{isReview ? "Tudo em ordem" : "A primeira ficha"}</p><h3>{isReview ? "Nenhuma pendência neste filtro." : "O acervo está pronto para receber seus livros."}</h3><p>{isReview ? "Ajuste o filtro ou volte ao acervo para consultar os registros já processados." : "Use a planilha original para processar vários títulos de uma vez, ou registre um livro manualmente."}</p><div className="empty-actions">{!isReview && <button onClick={onImport} className="button button-primary"><Upload size={17} /> Importar planilha</button>}<button onClick={onCreate} className="button button-quiet"><Plus size={17} /> Novo livro</button></div></div></div>;
 }
 
 function TaxonomyView({ onBack }: { onBack: () => void }) {
-  return <section className="taxonomy-view"><div className="taxonomy-cover"><img src="/manus-storage/shinko-taxonomy-banner_1f5e6422.jpg" alt="Fichas e divisórias de catalogação organizadas" /><div><p className="eyebrow text-[#b84432]">Mapa de classificação</p><h2>A taxonomia é a espinha do acervo.</h2><p>Os códigos abaixo alimentam o ID Shinko e organizam os arquivos por mídia, gênero e autor.</p><button onClick={onBack} className="button button-dark">Voltar ao acervo <ArrowUpRight size={17} /></button></div></div><div className="taxonomy-list"><div className="taxonomy-header"><span>Mídia</span><span>Gênero</span><span>Aplicação</span></div>{taxonomyRows.map(([media, genre, category]) => <div className="taxonomy-row" key={`${media}-${genre}`}><code>{media}</code><code>{genre}</code><span>{category}</span></div>)}</div><div className="taxonomy-aside"><img src="/manus-storage/shinko-drawer-portrait_0aa77585.jpg" alt="Gaveta de fichas catalográficas" /><div><p className="eyebrow">Regra de formação</p><code>ST.[Mídia].[Gênero].[Slug]-[Vol]</code><p>O app preenche essa estrutura e destaca conflitos de IDs ou classificações para sua conferência.</p></div></div></section>;
+  return <section className="taxonomy-view"><div className="taxonomy-cover"><CatalogArtwork src="/manus-storage/shinko-taxonomy-banner_1f5e6422.jpg" alt="Fichas e divisórias de catalogação organizadas" className="taxonomy-artwork" variant="taxonomy" /><div><p className="eyebrow text-[#b84432]">Mapa de classificação</p><h2>A taxonomia é a espinha do acervo.</h2><p>Os códigos abaixo alimentam o ID Shinko e organizam os arquivos por mídia, gênero e autor.</p><button onClick={onBack} className="button button-dark">Voltar ao acervo <ArrowUpRight size={17} /></button></div></div><div className="taxonomy-list"><div className="taxonomy-header"><span>Mídia</span><span>Gênero</span><span>Aplicação</span></div>{taxonomyRows.map(([media, genre, category]) => <div className="taxonomy-row" key={`${media}-${genre}`}><code>{media}</code><code>{genre}</code><span>{category}</span></div>)}</div><div className="taxonomy-aside"><CatalogArtwork src="/manus-storage/shinko-drawer-portrait_0aa77585.jpg" alt="Gaveta de fichas catalográficas" className="taxonomy-aside-artwork" variant="drawer" /><div><p className="eyebrow">Regra de formação</p><code>ST.[Mídia].[Gênero].[Slug]-[Vol]</code><p>O app preenche essa estrutura e destaca conflitos de IDs ou classificações para sua conferência.</p></div></div></section>;
 }
 
 function RulesView({ rules, onNew, onEdit, onRemove }: { rules: EditableRule[]; onNew: () => void; onEdit: (rule: EditableRule) => void; onRemove: (uid: string) => void }) {
@@ -1393,7 +1439,11 @@ function ClassificationMonitorView({ dashboard, history, isAuthenticated, isBusy
   </section>;
 }
 
-function BackupView({ backups, githubSettings, githubVersions, isLoadingGitHubVersions, isAuthenticated, isCreating, isGitHubBusy, onCreate, onRestore, onRunGitHub, onScheduleGitHub, onRestoreGitHub, onLogin }: { backups: BackupInfo[]; githubSettings?: GitHubBackupSettings; githubVersions: Array<{ path: string; size: number }>; isLoadingGitHubVersions: boolean; isAuthenticated: boolean; isCreating: boolean; isGitHubBusy: boolean; onCreate: () => void; onRestore: (uid: string) => void; onRunGitHub: () => void; onScheduleGitHub: (enabled: boolean) => void; onRestoreGitHub: (path: string) => void; onLogin: () => void }) {
+function ExternalSnapshotTransfer({ isAuthenticated, isBusy, onExport, onImport, onLogin }: { isAuthenticated: boolean; isBusy: boolean; onExport: () => void; onImport: () => void; onLogin: () => void }) {
+  return <section className="github-backup-panel"><div className="github-backup-copy"><p className="eyebrow">Mudança de hospedagem</p><h3>Migrar acervo completo</h3><p>Exporte a cópia JSON na versão atual e, após entrar como administrador no Render, importe o mesmo arquivo no novo banco Aiven.</p></div><div className="github-backup-actions">{isAuthenticated ? <><button onClick={onExport} className="button button-quiet" disabled={isBusy}><Download size={17} /> Exportar migração</button><button onClick={onImport} className="button button-primary" disabled={isBusy}><Upload size={17} /> Importar migração</button></> : <button onClick={onLogin} className="button button-primary"><ShieldCheck size={17} /> Entrar e sincronizar</button>}</div></section>;
+}
+
+function BackupView({ backups, githubSettings, githubVersions, isLoadingGitHubVersions, isAuthenticated, isCreating, isGitHubBusy, onCreate, onRestore, onRunGitHub, onScheduleGitHub, onRestoreGitHub, onExportExternal: _onExportExternal, onImportExternal: _onImportExternal, onLogin }: { backups: BackupInfo[]; githubSettings?: GitHubBackupSettings; githubVersions: Array<{ path: string; size: number }>; isLoadingGitHubVersions: boolean; isAuthenticated: boolean; isCreating: boolean; isGitHubBusy: boolean; onCreate: () => void; onRestore: (uid: string) => void; onRunGitHub: () => void; onScheduleGitHub: (enabled: boolean) => void; onRestoreGitHub: (path: string) => void; onExportExternal: () => void; onImportExternal: () => void; onLogin: () => void }) {
   const githubScheduled = Boolean(githubSettings?.scheduleCronTaskUid && githubSettings.enabled);
   return <section className="management-view"><div className="management-heading"><div><p className="eyebrow">Segurança e continuidade</p><h2>Seu acervo acompanha você.</h2><p>{isAuthenticated ? "Os registros, regras e vínculos ficam sincronizados na sua conta. Crie cópias de segurança antes de alterações grandes." : "Entre na sua conta para sincronizar o acervo em outros dispositivos e habilitar cópias de segurança."}</p></div><button onClick={isAuthenticated ? onCreate : onLogin} className="button button-primary" disabled={isCreating}><ShieldCheck size={18} /> {isAuthenticated ? isCreating ? "Criando cópia" : "Criar backup" : "Entrar e sincronizar"}</button></div><div className="sync-ledger"><div><span>ESTADO</span><strong>{isAuthenticated ? "Sincronizado" : "Somente neste navegador"}</strong></div><div><span>CONTEÚDO</span><strong>Livros, regras e exemplares</strong></div><div><span>RESTAURAÇÃO</span><strong>Por cópia datada</strong></div></div>{isAuthenticated && <><section className="github-backup-panel"><div className="github-backup-copy"><p className="eyebrow">Cópia externa pessoal</p><h3>GitHub privado</h3><p>Uma lista JSON datada é enviada para <code>{githubSettings?.repository || "stokkr-coder/Shinko-Toshokan"}</code>. Arquivos digitais não são incluídos.</p><small>{githubSettings?.lastBackupAt ? `Último envio: ${new Date(githubSettings.lastBackupAt).toLocaleString("pt-BR")}` : "Nenhuma cópia externa enviada ainda."}{githubSettings?.lastError ? ` Último aviso: ${githubSettings.lastError}` : ""}</small></div><div className="github-backup-actions"><button onClick={onRunGitHub} className="button button-primary" disabled={isGitHubBusy}><FolderArchive size={17} /> {isGitHubBusy ? "Enviando" : "Enviar agora"}</button><button onClick={() => onScheduleGitHub(!githubScheduled)} className="button button-quiet" disabled={isGitHubBusy}>{githubScheduled ? "Pausar diário" : "Ativar diário"}</button><a href={`https://github.com/${githubSettings?.repository || "stokkr-coder/Shinko-Toshokan"}/tree/main/backups`} target="_blank" rel="noreferrer" className="button button-quiet">Ver versões</a><span>{githubScheduled ? "Diário às 03:00 (Brasília)" : "Agendamento ainda não ativado"}</span></div></section><section className="github-version-list"><div><p className="eyebrow">Recuperação do catálogo</p><h3>Versões datadas</h3><p>A restauração substitui livros e regras pelo catálogo escolhido. Registros vinculados a livros ausentes são removidos para preservar a integridade.</p></div>{isLoadingGitHubVersions ? <p>Buscando versões salvas…</p> : githubVersions.length ? githubVersions.map((version) => <article key={version.path}><div><code>{version.path.slice(8, 18)}</code><span>{Math.max(1, Math.round(version.size / 1024))} KB</span></div><button onClick={() => onRestoreGitHub(version.path)} className="button button-quiet" disabled={isGitHubBusy}>Restaurar esta versão</button></article>) : <p>Nenhuma versão datada disponível ainda.</p>}</section></>}<div className="backup-list">{backups.length ? backups.map((backup) => <article className="backup-row" key={backup.uid}><div><code>BK</code><strong>{backup.label}</strong><span>{new Date(backup.createdAt).toLocaleString("pt-BR")}</span></div><p>{backup.bookCount} livros · {backup.ruleCount} regras · {backup.assetCount} vínculos</p><button onClick={() => onRestore(backup.uid)} className="button button-quiet">Restaurar</button></article>) : <div className="management-empty"><ShieldCheck size={24} /><h3>Nenhuma cópia de segurança criada.</h3><p>Crie a primeira cópia após importar ou revisar o acervo.</p></div>}</div></section>;
 }

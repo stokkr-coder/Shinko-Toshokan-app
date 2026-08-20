@@ -1,15 +1,17 @@
 import { z } from "zod";
 import { COOKIE_NAME } from "../shared/const";
 import { parse as parseCookie } from "cookie";
-import { createBackup, createClassificationReport, createReadingEvent, deleteAsset, deleteBook, deleteRule, deleteWantToRead, getClassificationDashboard, getClassificationMonitorSettings, getGitHubBackupSettings, getLibrarySnapshot, listAssets, listBackups, listBooks, listClassificationReports, listMetadata, listReadingEvents, listReadingGoals, listRules, listWantToRead, reorderWantToRead, restoreBackup, restoreGitHubCatalog, updateClassificationSchedule, updateGitHubBackupSchedule, upsertAsset, upsertBook, upsertBooks, upsertClassificationMonitorSettings, upsertGitHubBackupSettings, upsertMetadata, upsertReadingGoal, upsertRule, upsertWantToRead } from "./db";
+import { createBackup, createClassificationReport, createReadingEvent, deleteAsset, deleteBook, deleteRule, deleteWantToRead, getClassificationDashboard, getClassificationMonitorSettings, getGitHubBackupSettings, getLibrarySnapshot, importLibrarySnapshot, listAssets, listBackups, listBooks, listClassificationReports, listMetadata, listReadingEvents, listReadingGoals, listRules, listWantToRead, reorderWantToRead, restoreBackup, restoreGitHubCatalog, updateClassificationSchedule, updateGitHubBackupSchedule, upsertAsset, upsertBook, upsertBooks, upsertClassificationMonitorSettings, upsertGitHubBackupSettings, upsertMetadata, upsertReadingGoal, upsertRule, upsertWantToRead } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { createHeartbeatJob, updateHeartbeatJob } from "./_core/heartbeat";
 import { systemRouter } from "./_core/systemRouter";
-import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { protectedProcedure, publicProcedure, router, writeProcedure } from "./_core/trpc";
 import { cacheIsbnCover, lookupIsbn } from "./isbn";
-import { storagePut } from "./storage";
+import { hasManagedStorage, storagePut } from "./storage";
 import { runGitHubCatalogBackup } from "./githubBackupSchedule";
 import { listGitHubCatalogBackups, readGitHubCatalogBackup } from "./githubBackup";
+import { deserializeLibrarySnapshot } from "./backupCodec";
+import { ENV } from "./_core/env";
 
 const bookSchema = z.object({ uid: z.string().min(1).max(96), raw: z.string().max(3000), title: z.string().min(1).max(3000), author: z.string().max(360), media: z.string().max(8), genre: z.string().max(8), slug: z.string().max(12), volume: z.string().max(12), collection: z.string().max(360), seriesCode: z.string().max(32), seriesNumber: z.string().max(160), extension: z.string().max(16), shinkoId: z.string().max(64), filename: z.string().max(4000), classification: z.string().max(420), confidence: z.enum(["Alta", "Média", "Revisar"]), warnings: z.array(z.string().max(320)).max(40), duplicate: z.boolean() });
 const ruleSchema = z.object({ uid: z.string().min(1).max(96), name: z.string().min(1).max(180), matcher: z.string().min(1).max(400), collection: z.string().min(1).max(180), seriesCode: z.string().max(32), media: z.string().max(8), genre: z.string().max(8), defaultAuthor: z.string().max(360), active: z.boolean() });
@@ -20,7 +22,7 @@ const readingGoalSchema = z.object({ uid: z.string().min(1).max(96), period: z.e
 const wantToReadSchema = z.object({ uid: z.string().min(1).max(96), bookUid: z.string().min(1).max(96), priority: z.enum(["Alta", "Média", "Baixa"]), note: z.string().max(4_000), position: z.number().int().min(0).max(100_000) });
 const classificationMonitorSchema = z.object({ alertThresholdCount: z.number().int().min(1).max(100_000), alertThresholdPercent: z.number().int().min(1).max(100), reportFrequency: z.enum(["weekly", "monthly"]) });
 
-const userId = (ctx: { user: { id: number } }) => ctx.user.id;
+const userId = (ctx: { user: { id: number }; libraryOwnerId?: number | null }) => ctx.libraryOwnerId ?? ctx.user.id;
 const safeFileName = (value: string) => value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 140) || "arquivo";
 function validateAsset(asset: z.infer<typeof assetSchema>) {
   if (asset.kind === "physical" && !asset.location.trim()) throw new Error("Informe a localização do exemplar físico.");
@@ -40,20 +42,20 @@ export const appRouter = router({
   library: router({
     snapshot: protectedProcedure.query(async ({ ctx }) => getLibrarySnapshot(userId(ctx))),
     books: protectedProcedure.query(async ({ ctx }) => listBooks(userId(ctx))),
-    saveBook: protectedProcedure.input(bookSchema).mutation(async ({ ctx, input }) => { await upsertBook(userId(ctx), input); return { success: true } as const; }),
-    importBooks: protectedProcedure.input(z.object({ books: z.array(bookSchema).min(1).max(3000) })).mutation(async ({ ctx, input }) => { const books = await upsertBooks(userId(ctx), input.books); const report = await createClassificationReport(userId(ctx), "import", { books: input.books }); return { count: books.length, report }; }),
-    removeBook: protectedProcedure.input(z.object({ uid: z.string().min(1).max(96) })).mutation(async ({ ctx, input }) => { await deleteBook(userId(ctx), input.uid); return { success: true } as const; }),
-    rules: router({ list: protectedProcedure.query(async ({ ctx }) => listRules(userId(ctx))), save: protectedProcedure.input(ruleSchema).mutation(async ({ ctx, input }) => { await upsertRule(userId(ctx), input); return { success: true } as const; }), remove: protectedProcedure.input(z.object({ uid: z.string().min(1).max(96) })).mutation(async ({ ctx, input }) => { await deleteRule(userId(ctx), input.uid); return { success: true } as const; }) }),
+    saveBook: writeProcedure.input(bookSchema).mutation(async ({ ctx, input }) => { await upsertBook(userId(ctx), input); return { success: true } as const; }),
+    importBooks: writeProcedure.input(z.object({ books: z.array(bookSchema).min(1).max(3000) })).mutation(async ({ ctx, input }) => { const books = await upsertBooks(userId(ctx), input.books); const report = await createClassificationReport(userId(ctx), "import", { books: input.books }); return { count: books.length, report }; }),
+    removeBook: writeProcedure.input(z.object({ uid: z.string().min(1).max(96) })).mutation(async ({ ctx, input }) => { await deleteBook(userId(ctx), input.uid); return { success: true } as const; }),
+    rules: router({ list: protectedProcedure.query(async ({ ctx }) => listRules(userId(ctx))), save: writeProcedure.input(ruleSchema).mutation(async ({ ctx, input }) => { await upsertRule(userId(ctx), input); return { success: true } as const; }), remove: writeProcedure.input(z.object({ uid: z.string().min(1).max(96) })).mutation(async ({ ctx, input }) => { await deleteRule(userId(ctx), input.uid); return { success: true } as const; }) }),
     assets: router({
       list: protectedProcedure.input(z.object({ bookUid: z.string().max(96).optional() }).optional()).query(async ({ ctx, input }) => listAssets(userId(ctx), input?.bookUid)),
-      save: protectedProcedure.input(assetSchema).mutation(async ({ ctx, input }) => { validateAsset(input); await upsertAsset(userId(ctx), input); return { success: true } as const; }),
-      upload: protectedProcedure.input(z.object({ bookUid: z.string().min(1).max(96), label: z.string().min(1).max(240), fileName: z.string().min(1).max(180), mimeType: z.string().max(180), base64: z.string().min(1).max(13_000_000) })).mutation(async ({ ctx, input }) => { const bytes = Buffer.from(input.base64, "base64"); if (!bytes.length || bytes.length > 9 * 1024 * 1024) throw new Error("O anexo deve ter até 9 MB."); const stored = await storagePut(`library/${userId(ctx)}/${input.bookUid}/${safeFileName(input.fileName)}`, bytes, input.mimeType || "application/octet-stream"); const asset = { uid: crypto.randomUUID(), bookUid: input.bookUid, kind: "digital-file" as const, label: input.label, location: "", sourceUrl: "", storageKey: stored.key, storageUrl: stored.url, mimeType: input.mimeType || "application/octet-stream", byteSize: bytes.length }; await upsertAsset(userId(ctx), asset); return asset; }),
-      remove: protectedProcedure.input(z.object({ uid: z.string().min(1).max(96) })).mutation(async ({ ctx, input }) => { await deleteAsset(userId(ctx), input.uid); return { success: true } as const; }),
+      save: writeProcedure.input(assetSchema).mutation(async ({ ctx, input }) => { validateAsset(input); await upsertAsset(userId(ctx), input); return { success: true } as const; }),
+      upload: writeProcedure.input(z.object({ bookUid: z.string().min(1).max(96), label: z.string().min(1).max(240), fileName: z.string().min(1).max(180), mimeType: z.string().max(180), base64: z.string().min(1).max(13_000_000) })).mutation(async ({ ctx, input }) => { if (!hasManagedStorage()) throw new Error("O envio de arquivos digitais não está disponível nesta versão externa. Cadastre um link digital ou use a versão Manus para armazenar anexos."); const bytes = Buffer.from(input.base64, "base64"); if (!bytes.length || bytes.length > 9 * 1024 * 1024) throw new Error("O anexo deve ter até 9 MB."); const stored = await storagePut(`library/${userId(ctx)}/${input.bookUid}/${safeFileName(input.fileName)}`, bytes, input.mimeType || "application/octet-stream"); const asset = { uid: crypto.randomUUID(), bookUid: input.bookUid, kind: "digital-file" as const, label: input.label, location: "", sourceUrl: "", storageKey: stored.key, storageUrl: stored.url, mimeType: input.mimeType || "application/octet-stream", byteSize: bytes.length }; await upsertAsset(userId(ctx), asset); return asset; }),
+      remove: writeProcedure.input(z.object({ uid: z.string().min(1).max(96) })).mutation(async ({ ctx, input }) => { await deleteAsset(userId(ctx), input.uid); return { success: true } as const; }),
     }),
     metadata: router({
       list: protectedProcedure.query(async ({ ctx }) => listMetadata(userId(ctx))),
-      save: protectedProcedure.input(metadataSchema).mutation(async ({ ctx, input }) => { await upsertMetadata(userId(ctx), input); return { success: true } as const; }),
-      lookupIsbn: protectedProcedure.input(z.object({ bookUid: z.string().min(1).max(96), isbn: z.string().min(10).max(32) })).mutation(async ({ ctx, input }) => {
+      save: writeProcedure.input(metadataSchema).mutation(async ({ ctx, input }) => { await upsertMetadata(userId(ctx), input); return { success: true } as const; }),
+      lookupIsbn: writeProcedure.input(z.object({ bookUid: z.string().min(1).max(96), isbn: z.string().min(10).max(32) })).mutation(async ({ ctx, input }) => {
         if (!(await listBooks(userId(ctx))).some((book) => book.uid === input.bookUid)) throw new Error("Livro não encontrado no seu acervo.");
         const found = await lookupIsbn(input.isbn);
         const storedCover = await cacheIsbnCover(userId(ctx), found.isbn, found.coverUrl);
@@ -63,21 +65,22 @@ export const appRouter = router({
     }),
     reading: router({
       list: protectedProcedure.input(z.object({ bookUid: z.string().max(96).optional() }).optional()).query(async ({ ctx, input }) => listReadingEvents(userId(ctx), input?.bookUid)),
-      add: protectedProcedure.input(readingEventSchema).mutation(async ({ ctx, input }) => createReadingEvent(userId(ctx), input)),
+      add: writeProcedure.input(readingEventSchema).mutation(async ({ ctx, input }) => createReadingEvent(userId(ctx), input)),
     }),
-    readingGoals: router({ list: protectedProcedure.query(async ({ ctx }) => listReadingGoals(userId(ctx))), save: protectedProcedure.input(readingGoalSchema).mutation(async ({ ctx, input }) => { await upsertReadingGoal(userId(ctx), input); return { success: true } as const; }) }),
+    readingGoals: router({ list: protectedProcedure.query(async ({ ctx }) => listReadingGoals(userId(ctx))), save: writeProcedure.input(readingGoalSchema).mutation(async ({ ctx, input }) => { await upsertReadingGoal(userId(ctx), input); return { success: true } as const; }) }),
     wantToRead: router({
       list: protectedProcedure.query(async ({ ctx }) => listWantToRead(userId(ctx))),
-      save: protectedProcedure.input(wantToReadSchema).mutation(async ({ ctx, input }) => { if (!(await listBooks(userId(ctx))).some((book) => book.uid === input.bookUid)) throw new Error("Livro não encontrado no seu acervo."); await upsertWantToRead(userId(ctx), input); return { success: true } as const; }),
-      remove: protectedProcedure.input(z.object({ uid: z.string().min(1).max(96) })).mutation(async ({ ctx, input }) => { await deleteWantToRead(userId(ctx), input.uid); return { success: true } as const; }),
-      reorder: protectedProcedure.input(z.object({ uids: z.array(z.string().min(1).max(96)).max(100_000) })).mutation(async ({ ctx, input }) => reorderWantToRead(userId(ctx), input.uids)),
-      beginReading: protectedProcedure.input(z.object({ uid: z.string().min(1).max(96), event: readingEventSchema })).mutation(async ({ ctx, input }) => { const item = (await listWantToRead(userId(ctx))).find((candidate) => candidate.uid === input.uid); if (!item || item.bookUid !== input.event.bookUid) throw new Error("Item da lista não encontrado."); await createReadingEvent(userId(ctx), input.event); await deleteWantToRead(userId(ctx), input.uid); return { success: true } as const; }),
+      save: writeProcedure.input(wantToReadSchema).mutation(async ({ ctx, input }) => { if (!(await listBooks(userId(ctx))).some((book) => book.uid === input.bookUid)) throw new Error("Livro não encontrado no seu acervo."); await upsertWantToRead(userId(ctx), input); return { success: true } as const; }),
+      remove: writeProcedure.input(z.object({ uid: z.string().min(1).max(96) })).mutation(async ({ ctx, input }) => { await deleteWantToRead(userId(ctx), input.uid); return { success: true } as const; }),
+      reorder: writeProcedure.input(z.object({ uids: z.array(z.string().min(1).max(96)).max(100_000) })).mutation(async ({ ctx, input }) => reorderWantToRead(userId(ctx), input.uids)),
+      beginReading: writeProcedure.input(z.object({ uid: z.string().min(1).max(96), event: readingEventSchema })).mutation(async ({ ctx, input }) => { const item = (await listWantToRead(userId(ctx))).find((candidate) => candidate.uid === input.uid); if (!item || item.bookUid !== input.event.bookUid) throw new Error("Item da lista não encontrado."); await createReadingEvent(userId(ctx), input.event); await deleteWantToRead(userId(ctx), input.uid); return { success: true } as const; }),
     }),
     classificationMonitor: router({
       settings: protectedProcedure.query(async ({ ctx }) => getClassificationMonitorSettings(userId(ctx))),
-      saveSettings: protectedProcedure.input(classificationMonitorSchema).mutation(async ({ ctx, input }) => {
+      saveSettings: writeProcedure.input(classificationMonitorSchema).mutation(async ({ ctx, input }) => {
         const current = await getClassificationMonitorSettings(userId(ctx));
         const settings = await upsertClassificationMonitorSettings(userId(ctx), { ...current, ...input });
+        if (ENV.authProvider === "google") return settings;
         if (settings.scheduleCronTaskUid) {
           await updateHeartbeatJob(settings.scheduleCronTaskUid, { cron: classificationReportCron(settings.reportFrequency), path: "/api/scheduled/classification-report", description: "Relatório de Literatura Geral da Biblioteca Shinko", enable: settings.reportEnabled }, sessionTokenFor(ctx));
         }
@@ -85,10 +88,11 @@ export const appRouter = router({
       }),
       dashboard: protectedProcedure.query(async ({ ctx }) => getClassificationDashboard(userId(ctx))),
       history: protectedProcedure.query(async ({ ctx }) => listClassificationReports(userId(ctx))),
-      runNow: protectedProcedure.mutation(async ({ ctx }) => createClassificationReport(userId(ctx), "manual")),
-      schedule: protectedProcedure.input(z.object({ enabled: z.boolean() })).mutation(async ({ ctx, input }) => {
+      runNow: writeProcedure.mutation(async ({ ctx }) => createClassificationReport(userId(ctx), "manual")),
+      schedule: writeProcedure.input(z.object({ enabled: z.boolean() })).mutation(async ({ ctx, input }) => {
         const current = await getClassificationMonitorSettings(userId(ctx));
         const settings = await upsertClassificationMonitorSettings(userId(ctx), { ...current, reportEnabled: input.enabled });
+        if (ENV.authProvider === "google") return settings;
         const sessionToken = sessionTokenFor(ctx);
         const cron = classificationReportCron(settings.reportFrequency);
         if (settings.scheduleCronTaskUid) {
@@ -102,15 +106,16 @@ export const appRouter = router({
     }),
     githubBackups: router({
       settings: protectedProcedure.query(async ({ ctx }) => getGitHubBackupSettings(userId(ctx))),
-      runNow: protectedProcedure.mutation(async ({ ctx }) => runGitHubCatalogBackup(userId(ctx))),
+      runNow: writeProcedure.mutation(async ({ ctx }) => runGitHubCatalogBackup(userId(ctx))),
       listVersions: protectedProcedure.query(async () => listGitHubCatalogBackups()),
-      restoreVersion: protectedProcedure.input(z.object({ path: z.string().regex(/^backups\/\d{4}-\d{2}-\d{2}\/catalogo\.json$/) })).mutation(async ({ ctx, input }) => {
+      restoreVersion: writeProcedure.input(z.object({ path: z.string().regex(/^backups\/\d{4}-\d{2}-\d{2}\/catalogo\.json$/) })).mutation(async ({ ctx, input }) => {
         const { catalog } = await readGitHubCatalogBackup(input.path);
         return { path: input.path, ...(await restoreGitHubCatalog(userId(ctx), catalog)) };
       }),
-      schedule: protectedProcedure.input(z.object({ enabled: z.boolean() })).mutation(async ({ ctx, input }) => {
+      schedule: writeProcedure.input(z.object({ enabled: z.boolean() })).mutation(async ({ ctx, input }) => {
         const current = await getGitHubBackupSettings(userId(ctx));
         const settings = await upsertGitHubBackupSettings(userId(ctx), { ...current, enabled: input.enabled });
+        if (ENV.authProvider === "google") return settings;
         const sessionToken = sessionTokenFor(ctx);
         if (settings.scheduleCronTaskUid) {
           await updateHeartbeatJob(settings.scheduleCronTaskUid, { cron: githubBackupCron, path: "/api/scheduled/github-backup", description: "Backup diário da lista do acervo Shinko no GitHub", enable: input.enabled }, sessionToken);
@@ -121,7 +126,7 @@ export const appRouter = router({
         return updateGitHubBackupSchedule(userId(ctx), job.taskUid);
       }),
     }),
-    backups: router({ list: protectedProcedure.query(async ({ ctx }) => listBackups(userId(ctx))), create: protectedProcedure.input(z.object({ label: z.string().min(1).max(240) })).mutation(async ({ ctx, input }) => createBackup(userId(ctx), input.label)), restore: protectedProcedure.input(z.object({ uid: z.string().min(1).max(96) })).mutation(async ({ ctx, input }) => restoreBackup(userId(ctx), input.uid)) }),
+    backups: router({ list: protectedProcedure.query(async ({ ctx }) => listBackups(userId(ctx))), create: writeProcedure.input(z.object({ label: z.string().min(1).max(240) })).mutation(async ({ ctx, input }) => createBackup(userId(ctx), input.label)), restore: writeProcedure.input(z.object({ uid: z.string().min(1).max(96) })).mutation(async ({ ctx, input }) => restoreBackup(userId(ctx), input.uid)), importSnapshot: writeProcedure.input(z.object({ snapshotJson: z.string().min(2).max(50_000_000) })).mutation(async ({ ctx, input }) => importLibrarySnapshot(userId(ctx), deserializeLibrarySnapshot(input.snapshotJson))) }),
   }),
 });
 

@@ -18,6 +18,17 @@ export type ClassificationMonitorSettingsPayload = { uid: string; alertThreshold
 export type ClassificationReportPayload = { uid: string; source: "import" | "manual" | "scheduled"; periodStart: number; periodEnd: number; totalBooks: number; generalCount: number; reviewCount: number; generalPercentBasisPoints: number; exceeded: boolean; summary: ReturnType<typeof calculateClassificationMetrics>["summary"] };
 export type GitHubBackupSettingsPayload = { uid: string; repository: string; enabled: boolean; scheduleCronTaskUid: string; lastBackupAt: number | null; lastBackupPath: string; lastCommitSha: string; lastError: string };
 
+const isManusStorageReference = (value: string) => /(?:^|\/)manus-storage(?:\/|$)/.test(value);
+
+export function sanitizeExternalSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
+  if (ENV.authProvider !== "google") return snapshot;
+  return {
+    ...snapshot,
+    assets: snapshot.assets.map((asset) => isManusStorageReference(asset.storageUrl) ? { ...asset, storageKey: "", storageUrl: "" } : asset),
+    metadata: snapshot.metadata.map((item) => isManusStorageReference(item.coverUrl) ? { ...item, coverStorageKey: "", coverUrl: "" } : item),
+  };
+}
+
 let _db: ReturnType<typeof drizzle> | null = null;
 export async function getDb() { if (!_db && process.env.DATABASE_URL) { try { _db = drizzle(process.env.DATABASE_URL); } catch (error) { console.warn("[Database] Failed to connect:", error); _db = null; } } return _db; }
 async function requireDb() { const db = await getDb(); if (!db) throw new Error("O armazenamento do acervo não está disponível no momento."); return db; }
@@ -33,6 +44,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
 }
 
 export async function getUserByOpenId(openId: string) { const db = await getDb(); if (!db) return undefined; return (await db.select().from(users).where(eq(users.openId, openId)).limit(1))[0]; }
+export async function getExternalLibraryOwner() { const db = await getDb(); if (!db) return undefined; return (await db.select().from(users).where(eq(users.role, "admin")).orderBy(asc(users.id)).limit(1))[0]; }
 
 const bookValues = (userId: number, book: BookPayload) => ({ userId, uid: book.uid, raw: book.raw, title: book.title, author: book.author, media: book.media, genre: book.genre, slug: book.slug, volume: book.volume, collection: book.collection, seriesCode: book.seriesCode, seriesNumber: book.seriesNumber, extension: book.extension, shinkoId: book.shinkoId, filename: book.filename, classification: book.classification, confidence: book.confidence, warningsJson: JSON.stringify(book.warnings), duplicate: book.duplicate ? 1 : 0 });
 export async function listBooks(userId: number) { const db = await requireDb(); return db.select().from(libraryBooks).where(eq(libraryBooks.userId, userId)).orderBy(desc(libraryBooks.updatedAt)); }
@@ -194,3 +206,4 @@ export async function getLibrarySnapshot(userId: number): Promise<LibrarySnapsho
 export async function createBackup(userId: number, label: string) { const db = await requireDb(); const snapshot = await getLibrarySnapshot(userId); const uid = crypto.randomUUID(); await db.insert(libraryBackups).values({ userId, uid, label, snapshotJson: serializeLibrarySnapshot(snapshot), bookCount: snapshot.books.length, ruleCount: snapshot.rules.length, assetCount: snapshot.assets.length }); return { uid, ...snapshot, createdAt: new Date() }; }
 export async function listBackups(userId: number) { const db = await requireDb(); return db.select({ uid: libraryBackups.uid, label: libraryBackups.label, bookCount: libraryBackups.bookCount, ruleCount: libraryBackups.ruleCount, assetCount: libraryBackups.assetCount, createdAt: libraryBackups.createdAt }).from(libraryBackups).where(eq(libraryBackups.userId, userId)).orderBy(desc(libraryBackups.createdAt)); }
 export async function restoreBackup(userId: number, backupUid: string) { const db = await requireDb(); const rows = await db.select().from(libraryBackups).where(and(eq(libraryBackups.userId, userId), eq(libraryBackups.uid, backupUid))).limit(1); if (!rows[0]) throw new Error("Cópia de segurança não encontrada."); const snapshot = deserializeLibrarySnapshot(rows[0].snapshotJson); await replaceLibrarySnapshot(db, userId, snapshot); return snapshot; }
+export async function importLibrarySnapshot(userId: number, snapshot: LibrarySnapshot) { const db = await requireDb(); const sanitized = sanitizeExternalSnapshot(snapshot); await replaceLibrarySnapshot(db, userId, sanitized); return { bookCount: sanitized.books.length, ruleCount: sanitized.rules.length, assetCount: sanitized.assets.length }; }

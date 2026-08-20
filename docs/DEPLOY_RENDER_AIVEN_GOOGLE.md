@@ -50,13 +50,15 @@ Depois de criar o Web Service no Render, registre os valores abaixo na área **E
 | `GOOGLE_CLIENT_ID` | Google Cloud | Identifica o app no login Google |
 | `GOOGLE_CLIENT_SECRET` | Google Cloud | Permite trocar o código de login por identidade |
 | `GOOGLE_REDIRECT_URI` | URL final do Render | Deve ser igual ao callback registrado no Google |
-| `SESSION_SECRET` | Valor aleatório longo | Assina a sessão do app |
-| `APP_BASE_URL` | URL final do Render | Origem pública do app |
-| `OWNER_GOOGLE_SUB` | Primeiro login do proprietário | Mantém o papel de administrador |
-| `ALLOWED_EMAILS` | Lista separada por vírgulas | Libera leitores convidados |
+| `AUTH_PROVIDER` | Valor fixo `google` | Ativa o login Google e desliga os agendamentos Manus |
+| `VITE_AUTH_PROVIDER` | Valor fixo `google` | Ajusta a interface para a hospedagem externa |
+| `JWT_SECRET` | Valor aleatório longo | Assina a sessão do app |
+| `GOOGLE_ADMIN_EMAIL` | E-mail Google do Oscar | Define o único administrador do acervo compartilhado |
+| `GOOGLE_ALLOWED_EMAILS` | Lista separada por vírgulas | Libera leitores convidados para consulta |
+| `EXTERNAL_CRON_SECRET` | Valor aleatório longo | Protege as chamadas automáticas do GitHub Actions |
 | `GITHUB_BACKUP_TOKEN` | Token GitHub restrito | Mantém o backup diário do catálogo |
 
-O identificador principal do proprietário deve ser o `sub` retornado pelo Google, não o e-mail. O e-mail pode mudar; o `sub` é o identificador estável da conta Google.
+Use exatamente o mesmo e-mail do Google em `GOOGLE_ADMIN_EMAIL` e os e-mails dos convidados em `GOOGLE_ALLOWED_EMAILS`. O administrador pode alterar o acervo; os convidados autorizados têm apenas leitura e pesquisa.
 
 ## 6. Publicar no Render
 
@@ -67,7 +69,9 @@ Build command: pnpm install --frozen-lockfile && pnpm build
 Start command: pnpm start
 ```
 
-O serviço precisa atender no valor da variável `PORT` fornecida pelo Render. Depois do primeiro deploy, copie a URL `https://SEU-SERVICO.onrender.com`, atualize `APP_BASE_URL` e `GOOGLE_REDIRECT_URI`, e registre a mesma URL de callback no Google Cloud.
+O serviço precisa atender no valor da variável `PORT` fornecida pelo Render. Depois do primeiro deploy, copie a URL `https://SEU-SERVICO.onrender.com`, atualize `GOOGLE_REDIRECT_URI` e registre a mesma URL de callback no Google Cloud.
+
+O repositório contém o arquivo `render.yaml`; selecione a opção de criar o serviço a partir do repositório e confirme os valores apresentados por esse manifesto. Após a primeira publicação, registre no GitHub os segredos `EXTERNAL_APP_URL` (a URL pública do Render) e `EXTERNAL_CRON_SECRET` (o mesmo valor seguro configurado no Render). O workflow `Rotinas externas da Biblioteca Shinko` chama o backup diariamente e o relatório de classificação às segundas-feiras.
 
 ## 7. Importar e validar o acervo
 
@@ -83,6 +87,8 @@ Antes de convidar leitores, importe o snapshot ou a exportação atual para o no
 
 O Render gratuito pode hibernar e o Aiven gratuito pode pausar por inatividade. Para evitar perda de confiança dos convidados, mostre uma mensagem de “iniciando o serviço” quando o primeiro acesso demorar. Mantenha a exportação Excel e o backup GitHub como rotinas independentes. Antes de qualquer atualização, abra uma pull request: a branch `main` exige a validação de testes, tipos e build.
 
-## 9. O que ainda será adaptado no código
+## 9. Arquivos digitais e imagens
 
-O projeto atual usa autenticação, armazenamento e agendamentos integrados ao ambiente Manus. A migração externa precisa substituir essas integrações por login Google, sessão própria, lista de e-mails autorizados, armazenamento externo para arquivos digitais e um cron compatível com o Render. Essas mudanças serão preparadas em uma etapa separada, sem alterar a versão atual publicada até que a cópia externa seja validada.
+A versão externa preserva a identidade visual com ilustrações em CSS, portanto não depende dos caminhos internos de imagem do Manus. As capas encontradas pelo ISBN continuam apontando para a fonte pública retornada pela consulta; quando não houver capa, o catálogo mostra seu estado visual padrão.
+
+Os anexos digitais previamente armazenados no Manus não devem ser considerados migrados para o Render. A interface externa bloqueia novos envios de arquivo com uma mensagem clara, pois o disco do Render é temporário. Para disponibilizar um conteúdo fora do Manus, cadastre um **link digital** durável. Um provedor de objetos poderá ser integrado futuramente, sem guardar arquivos no disco do Render.

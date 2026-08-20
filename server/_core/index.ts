@@ -4,12 +4,15 @@ import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
+import { registerExternalGoogleAuthRoutes } from "../externalGoogleAuth";
+import { registerExternalCronRoutes } from "../externalCron";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { registerClassificationReportSchedule } from "../classificationReportSchedule";
 import { registerGitHubBackupSchedule } from "../githubBackupSchedule";
 import { serveStatic, setupVite } from "./vite";
+import { ENV } from "./env";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -36,10 +39,15 @@ async function startServer() {
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
-  registerStorageProxy(app);
-  registerOAuthRoutes(app);
-  registerClassificationReportSchedule(app);
-  registerGitHubBackupSchedule(app);
+  if (ENV.authProvider === "google") {
+    registerExternalGoogleAuthRoutes(app);
+    registerExternalCronRoutes(app);
+  } else {
+    registerStorageProxy(app);
+    registerOAuthRoutes(app);
+    registerClassificationReportSchedule(app);
+    registerGitHubBackupSchedule(app);
+  }
   // tRPC API
   app.use(
     "/api/trpc",

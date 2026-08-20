@@ -4,11 +4,18 @@
 
 import { ENV } from "./_core/env";
 
+export function hasManagedStorage(): boolean {
+  return Boolean(ENV.forgeApiUrl && ENV.forgeApiKey);
+}
+
 function getForgeConfig() {
   const forgeUrl = ENV.forgeApiUrl;
   const forgeKey = ENV.forgeApiKey;
 
   if (!forgeUrl || !forgeKey) {
+    if (ENV.authProvider === "google") {
+      throw new Error("O envio de arquivos digitais não está configurado nesta versão externa. Use um link digital ou mantenha o arquivo na versão Manus.");
+    }
     throw new Error(
       "Storage config missing: set BUILT_IN_FORGE_API_URL and BUILT_IN_FORGE_API_KEY",
     );
