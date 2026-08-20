@@ -3,7 +3,7 @@ services:
     name: biblioteca-shinko
     runtime: node
     plan: free
-    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    buildCommand: pnpm install --frozen-lockfile && pnpm db:push && pnpm build
     startCommand: pnpm start
     healthCheckPath: /api/trpc/auth.me?batch=1&input=%7B%220%22%3A%7B%22json%22%3Anull%7D%7D
     envVars:

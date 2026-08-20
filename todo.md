@@ -82,6 +82,10 @@
 - [x] Configurar um workflow GitHub Actions para executar testes, checagem de tipos e build em alterações do código.
 - [x] Ampliar a busca do acervo com filtros adicionais para facilitar a navegação.
 - [ ] Preparar a migração da Biblioteca Shinko para hospedagem externa gratuita com acesso público controlado.
+- [ ] Executar a migração do esquema MySQL no build inicial do Render antes de habilitar o primeiro login externo.
+- [ ] Sincronizar o manifesto atualizado na branch principal pública usada pelo Render.
+- [ ] Forçar o redeploy e confirmar nos logs que `pnpm db:push` concluiu antes do início do servidor.
+- [ ] Validar o primeiro login externo depois da migração do esquema MySQL.
 - [x] Adicionar login Google externo com sessão segura e lista de e-mails autorizados.
 - [x] Permitir que leitores Google consultem o acervo compartilhado sem obter permissões de edição.
 - [x] Preparar manifesto Render, variáveis de ambiente e agendamento externo para a versão publicada.
