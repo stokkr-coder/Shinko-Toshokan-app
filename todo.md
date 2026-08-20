@@ -82,5 +82,13 @@
 - [x] Configurar um workflow GitHub Actions para executar testes, checagem de tipos e build em alterações do código.
 - [x] Ampliar a busca do acervo com filtros adicionais para facilitar a navegação.
 - [ ] Preparar a migração da Biblioteca Shinko para hospedagem externa gratuita com acesso público controlado.
+- [x] Adicionar login Google externo com sessão segura e lista de e-mails autorizados.
+- [x] Permitir que leitores Google consultem o acervo compartilhado sem obter permissões de edição.
+- [x] Preparar manifesto Render, variáveis de ambiente e agendamento externo para a versão publicada.
+- [x] Adicionar e validar o comando de inicialização de produção compatível com Render.
+- [x] Substituir ou desativar com fallback explícito os recursos visuais e de armazenamento dependentes do Manus no modo externo.
+- [x] Validar a inicialização e as rotas da variante externa sem variáveis exclusivas do Manus.
+- [x] Ocultar ou substituir capas e anexos já migrados que apontem para `/manus-storage` no modo externo.
+- [x] Normalizar referências Manus durante a importação de snapshot externo e cobrir a exibição com testes de interface.
 - [x] Identificar e normalizar partes de um mesmo volume de Patrística sem perder a numeração do tomo.
 - [x] Extrair série e número quando o título original trouxer essa informação entre colchetes.

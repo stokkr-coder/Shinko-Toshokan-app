@@ -1,0 +1,42 @@
+name: Rotinas externas da Biblioteca Shinko
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+    - cron: "0 12 * * 1"
+  workflow_dispatch:
+    inputs:
+      task:
+        description: Rotina a executar
+        required: true
+        type: choice
+        options:
+          - github-backup
+          - classification-report
+
+jobs:
+  run-external-task:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Definir tarefa programada
+        id: task
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "name=${{ inputs.task }}" >> "$GITHUB_OUTPUT"
+          elif [ "$(date -u +%H)" = "06" ]; then
+            echo "name=github-backup" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=classification-report" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Chamar a Biblioteca Shinko
+        env:
+          EXTERNAL_APP_URL: ${{ secrets.EXTERNAL_APP_URL }}
+          EXTERNAL_CRON_SECRET: ${{ secrets.EXTERNAL_CRON_SECRET }}
+          TASK: ${{ steps.task.outputs.name }}
+        run: |
+          test -n "$EXTERNAL_APP_URL"
+          test -n "$EXTERNAL_CRON_SECRET"
+          curl --fail-with-body --silent --show-error \
+            --request POST "$EXTERNAL_APP_URL/api/external-cron/$TASK" \
+            --header "Authorization: Bearer $EXTERNAL_CRON_SECRET"
