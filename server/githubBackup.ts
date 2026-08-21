@@ -53,6 +53,16 @@ async function getGitHubFile(path: string) {
   return payload;
 }
 
+async function getGitHubRawFile(path: string) {
+  const response = await fetch(`https://api.github.com/repos/${GITHUB_BACKUP_REPOSITORY_PATH}/contents/${path}`, {
+    headers: { ...githubHeaders(), Accept: "application/vnd.github.raw+json" },
+  });
+  if (response.status === 404) return null;
+  const raw = await response.text();
+  if (!response.ok) throw new Error(`Não foi possível acessar o conteúdo do backup (${response.status}).`);
+  return raw;
+}
+
 function assertCatalogPath(path: string) {
   if (!/^backups\/\d{4}-\d{2}-\d{2}\/catalogo\.json$/.test(path)) throw new Error("A versão selecionada não é um backup datado válido da Biblioteca Shinko.");
 }
@@ -99,9 +109,15 @@ export async function listGitHubCatalogBackups() {
 export async function readGitHubCatalogBackup(path: string) {
   assertCatalogPath(path);
   const file = await getGitHubFile(path);
-  if (!file?.content || file.encoding !== "base64") throw new Error("A versão selecionada não pôde ser lida no GitHub.");
+  let raw: unknown;
+  if (file?.content && file.encoding === "base64") {
+    raw = Buffer.from(file.content.replace(/\s/g, ""), "base64").toString("utf8");
+  } else {
+    raw = await getGitHubRawFile(path);
+    if (!raw) throw new Error("A versão selecionada não pôde ser lida no GitHub.");
+  }
   let decoded: unknown;
-  try { decoded = JSON.parse(Buffer.from(file.content.replace(/\s/g, ""), "base64").toString("utf8")); } catch { throw new Error("A versão selecionada contém JSON inválido."); }
+  try { decoded = JSON.parse(raw as string); } catch { throw new Error("A versão selecionada contém JSON inválido."); }
   return { path, catalog: parseGitHubCatalog(decoded) };
 }
 

@@ -45,4 +45,15 @@ describe("backup GitHub do catálogo", () => {
     await expect(readGitHubCatalogBackup("latest/catalogo.json")).rejects.toThrow("backup datado válido");
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
+
+  it("usa a resposta bruta quando o GitHub omite base64 em snapshots grandes", async () => {
+    const document = buildGitHubCatalogBackup(snapshot, new Date("2026-08-18T12:00:00.000Z"));
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ encoding: "none" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(document), { status: 200 }));
+
+    await expect(readGitHubCatalogBackup("backups/2026-08-18/catalogo.json")).resolves.toMatchObject({ catalog: { counts: { books: 1, rules: 1 } } });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect((fetchMock.mock.calls[1][1] as RequestInit).headers).toMatchObject({ Accept: "application/vnd.github.raw+json" });
+  });
 });
