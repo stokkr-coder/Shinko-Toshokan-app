@@ -82,12 +82,16 @@
 - [x] Configurar um workflow GitHub Actions para executar testes, checagem de tipos e build em alterações do código.
 - [x] Ampliar a busca do acervo com filtros adicionais para facilitar a navegação.
 - [ ] Preparar a migração da Biblioteca Shinko para hospedagem externa gratuita com acesso público controlado.
-- [ ] Identificar e restaurar uma cópia consistente do acervo Manus anterior à duplicação acidental.
-- [ ] Corrigir a recuperação de snapshots GitHub grandes para restaurar o acervo anterior à duplicação.
+- [x] Identificar e restaurar uma cópia consistente do acervo Manus anterior à duplicação acidental.
+- [x] Corrigir a recuperação de snapshots GitHub grandes para restaurar o acervo anterior à duplicação.
 - [x] Integrar o escriba fornecido como favicon e ícones do manifest PWA.
 - [ ] Executar a migração do esquema MySQL no build inicial do Render antes de habilitar o primeiro login externo.
-- [ ] Sincronizar o manifesto atualizado na branch principal pública usada pelo Render.
+- [x] Sincronizar o manifesto atualizado na branch principal pública usada pelo Render.
 - [ ] Forçar o redeploy e confirmar nos logs que `pnpm db:push` concluiu antes do início do servidor.
+- [ ] Abrir os logs do último build Render e registrar a execução bem-sucedida de `pnpm db:push`.
+- [ ] Normalizar a URI Aiven para configurar SSL sem repassar `ssl-mode` inválido ao MySQL2.
+- [ ] Sincronizar a normalização SSL na branch principal pública usada pelo Render.
+- [ ] Confirmar no redeploy Render que o aviso de `ssl-mode` desapareceu e que o Aiven continua acessível.
 - [x] Validar o primeiro login externo depois da migração do esquema MySQL.
 - [x] Adicionar login Google externo com sessão segura e lista de e-mails autorizados.
 - [x] Permitir que leitores Google consultem o acervo compartilhado sem obter permissões de edição.
