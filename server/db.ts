@@ -7,6 +7,7 @@ import { deserializeLibrarySnapshot, serializeLibrarySnapshot } from "./backupCo
 import { replaceLibrarySnapshot } from "./restoreLibrary";
 import { calculateClassificationMetrics, reportWindowStart, type ClassificationMonitorBook } from "../shared/classificationMonitoring";
 import type { GitHubCatalogSnapshot } from "./githubBackup";
+import { getMySqlConnectionConfig } from "./databaseConnection";
 
 export type BookPayload = { uid: string; raw: string; title: string; author: string; media: string; genre: string; slug: string; volume: string; collection: string; seriesCode: string; seriesNumber: string; extension: string; shinkoId: string; filename: string; classification: string; confidence: "Alta" | "Média" | "Revisar"; warnings: string[]; duplicate: boolean };
 export type RulePayload = { uid: string; name: string; matcher: string; collection: string; seriesCode: string; media: string; genre: string; defaultAuthor: string; active: boolean };
@@ -31,21 +32,10 @@ export function sanitizeExternalSnapshot(snapshot: LibrarySnapshot): LibrarySnap
 }
 
 let _db: ReturnType<typeof drizzle> | null = null;
-export function getDatabaseConnectionConfig(databaseUrl: string) {
-  const url = new URL(databaseUrl);
-  const sslMode = url.searchParams.get("ssl-mode")?.toUpperCase();
-  url.searchParams.delete("ssl-mode");
-  if (!sslMode || sslMode === "DISABLED") return { url: url.toString(), ssl: undefined };
-  return {
-    url: url.toString(),
-    // REQUIRED no Aiven exige criptografia, mas não valida a CA; mantemos a mesma semântica sem repassar a opção inválida ao mysql2.
-    ssl: { rejectUnauthorized: sslMode === "VERIFY_CA" || sslMode === "VERIFY_IDENTITY" },
-  };
-}
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      const config = getDatabaseConnectionConfig(process.env.DATABASE_URL);
+      const config = getMySqlConnectionConfig(process.env.DATABASE_URL);
       // drizzle possui sobrecargas distintas para pool callback e pool promise; ambos expõem a mesma interface usada pelo repositório.
       _db = (config.ssl ? drizzle({ client: mysql.createPool({ uri: config.url, ssl: config.ssl }) }) : drizzle(config.url)) as ReturnType<typeof drizzle>;
     } catch (error) {
