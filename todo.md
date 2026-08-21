@@ -95,6 +95,7 @@
 - [ ] Corrigir a configuração usada pelo Drizzle no build para não encaminhar `ssl-mode` ao MySQL2.
 - [ ] Confirmar e atualizar o host de conexão Aiven após a falha `ENOTFOUND` no Render.
 - [x] Autorizar explicitamente os scripts de build de `esbuild` e `@tailwindcss/oxide` no pnpm.
+- [ ] Configurar o build Render para executar somente os scripts pnpm aprovados de Tailwind e esbuild.
 - [x] Validar o primeiro login externo depois da migração do esquema MySQL.
 - [x] Adicionar login Google externo com sessão segura e lista de e-mails autorizados.
 - [x] Permitir que leitores Google consultem o acervo compartilhado sem obter permissões de edição.
