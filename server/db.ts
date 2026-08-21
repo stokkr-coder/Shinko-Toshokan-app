@@ -1,5 +1,6 @@
 import { and, asc, desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import mysql from "mysql2/promise";
 import { bookMetadata, classificationMonitorSettings, classificationReports, collectionRules, githubBackupSettings, InsertUser, libraryAssets, libraryBackups, libraryBooks, readingEvents, readingGoals, users, wantToReadItems } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { deserializeLibrarySnapshot, serializeLibrarySnapshot } from "./backupCodec";
@@ -30,7 +31,30 @@ export function sanitizeExternalSnapshot(snapshot: LibrarySnapshot): LibrarySnap
 }
 
 let _db: ReturnType<typeof drizzle> | null = null;
-export async function getDb() { if (!_db && process.env.DATABASE_URL) { try { _db = drizzle(process.env.DATABASE_URL); } catch (error) { console.warn("[Database] Failed to connect:", error); _db = null; } } return _db; }
+export function getDatabaseConnectionConfig(databaseUrl: string) {
+  const url = new URL(databaseUrl);
+  const sslMode = url.searchParams.get("ssl-mode")?.toUpperCase();
+  url.searchParams.delete("ssl-mode");
+  if (!sslMode || sslMode === "DISABLED") return { url: url.toString(), ssl: undefined };
+  return {
+    url: url.toString(),
+    // REQUIRED no Aiven exige criptografia, mas não valida a CA; mantemos a mesma semântica sem repassar a opção inválida ao mysql2.
+    ssl: { rejectUnauthorized: sslMode === "VERIFY_CA" || sslMode === "VERIFY_IDENTITY" },
+  };
+}
+export async function getDb() {
+  if (!_db && process.env.DATABASE_URL) {
+    try {
+      const config = getDatabaseConnectionConfig(process.env.DATABASE_URL);
+      // drizzle possui sobrecargas distintas para pool callback e pool promise; ambos expõem a mesma interface usada pelo repositório.
+      _db = (config.ssl ? drizzle({ client: mysql.createPool({ uri: config.url, ssl: config.ssl }) }) : drizzle(config.url)) as ReturnType<typeof drizzle>;
+    } catch (error) {
+      console.warn("[Database] Failed to connect:", error);
+      _db = null;
+    }
+  }
+  return _db;
+}
 async function requireDb() { const db = await getDb(); if (!db) throw new Error("O armazenamento do acervo não está disponível no momento."); return db; }
 
 export async function upsertUser(user: InsertUser): Promise<void> {
