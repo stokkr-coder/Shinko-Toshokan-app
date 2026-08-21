@@ -92,6 +92,8 @@
 - [ ] Normalizar a URI Aiven para configurar SSL sem repassar `ssl-mode` inválido ao MySQL2.
 - [ ] Sincronizar a normalização SSL na branch principal pública usada pelo Render.
 - [ ] Confirmar no redeploy Render que o aviso de `ssl-mode` desapareceu e que o Aiven continua acessível.
+- [ ] Corrigir a configuração usada pelo Drizzle no build para não encaminhar `ssl-mode` ao MySQL2.
+- [ ] Confirmar e atualizar o host de conexão Aiven após a falha `ENOTFOUND` no Render.
 - [x] Validar o primeiro login externo depois da migração do esquema MySQL.
 - [x] Adicionar login Google externo com sessão segura e lista de e-mails autorizados.
 - [x] Permitir que leitores Google consultem o acervo compartilhado sem obter permissões de edição.
