@@ -89,14 +89,19 @@
 - [x] Sincronizar o manifesto atualizado na branch principal pública usada pelo Render.
 - [ ] Forçar o redeploy e confirmar nos logs que `pnpm db:push` concluiu antes do início do servidor.
 - [ ] Abrir os logs do último build Render e registrar a execução bem-sucedida de `pnpm db:push`.
-- [ ] Normalizar a URI Aiven para configurar SSL sem repassar `ssl-mode` inválido ao MySQL2.
-- [ ] Sincronizar a normalização SSL na branch principal pública usada pelo Render.
-- [ ] Confirmar no redeploy Render que o aviso de `ssl-mode` desapareceu e que o Aiven continua acessível.
-- [ ] Corrigir a configuração usada pelo Drizzle no build para não encaminhar `ssl-mode` ao MySQL2.
-- [ ] Confirmar e atualizar o host de conexão Aiven após a falha `ENOTFOUND` no Render.
+- [x] Normalizar a URI Aiven para configurar SSL sem repassar `ssl-mode` inválido ao MySQL2.
+- [x] Sincronizar a normalização SSL na branch principal pública usada pelo Render.
+- [x] Confirmar no redeploy Render que o aviso de `ssl-mode` desapareceu e que o Aiven continua acessível.
+- [x] Corrigir a configuração usada pelo Drizzle no build para não encaminhar `ssl-mode` ao MySQL2.
+- [x] Confirmar e atualizar o host de conexão Aiven após a falha `ENOTFOUND` no Render.
+- [ ] Registrar no log Render a execução bem-sucedida de `pnpm db:push` antes do início do servidor.
+- [x] Confirmar após o redeploy a leitura do Acervo no Render com 1.792 registros.
 - [x] Autorizar explicitamente os scripts de build de `esbuild` e `@tailwindcss/oxide` no pnpm.
 - [ ] Configurar o build Render para executar somente os scripts pnpm aprovados de Tailwind e esbuild.
 - [ ] Adaptar a instalação do build para o ambiente Render que continua ignorando as políticas pnpm do repositório.
+- [ ] Alinhar `EXTERNAL_CRON_SECRET` entre Render e GitHub Actions e validar uma execução manual de backup.
+- [ ] Retornar erros controlados da rota cron externa para diagnosticar falhas de backup sem resposta 502 genérica.
+- [x] Classificar os avisos persistentes de pnpm, tamanho de bundle e `DEP0169` por origem e impacto antes de novas mudanças.
 - [x] Validar o primeiro login externo depois da migração do esquema MySQL.
 - [x] Adicionar login Google externo com sessão segura e lista de e-mails autorizados.
 - [x] Permitir que leitores Google consultem o acervo compartilhado sem obter permissões de edição.
